@@ -1,0 +1,45 @@
+#!/bin/sh /etc/rc.common
+
+# Load the AN7581 voice modules before /etc/init.d/voice (S18) applies the
+# configuration and before Asterisk (S99) starts.
+START=17
+
+start() {
+	modprobe an7581-zsi 2>/dev/null
+	modprobe an7581-pcm 2>/dev/null
+	modprobe an7581-slic-le9641 2>/dev/null
+
+	i=0
+	while [ $i -lt 10 ] && [ ! -e /proc/an7581-slic ]; do
+		sleep 1
+		i=$((i + 1))
+	done
+
+	[ -e /proc/an7581-zsi ] && echo id > /proc/an7581-zsi
+	i=0
+	while [ $i -lt 10 ]; do
+		[ -e /proc/an7581-slic ] && printf init > /proc/an7581-slic && break
+		sleep 1
+		i=$((i + 1))
+	done
+
+	if id asterisk >/dev/null 2>&1; then
+		if chown asterisk:asterisk /dev/an7581-pcm /dev/an7581-slic 2>/dev/null; then
+			chmod 660 /dev/an7581-pcm /dev/an7581-slic 2>/dev/null
+		else
+			chmod 666 /dev/an7581-pcm /dev/an7581-slic 2>/dev/null
+		fi
+		for p in /sys/module/an7581_pcm/parameters/lec_enable \
+			 /sys/module/an7581-pcm/parameters/lec_enable; do
+			[ -e "$p" ] || continue
+			chown root:asterisk "$p" 2>/dev/null
+			chmod 660 "$p" 2>/dev/null
+		done
+	else
+		chmod 666 /dev/an7581-pcm /dev/an7581-slic 2>/dev/null
+	fi
+}
+
+stop() {
+	:
+}

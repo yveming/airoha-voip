@@ -1,0 +1,914 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+#
+# voice-apply - turn /etc/config/voice into network/firewall state and
+# Asterisk PJSIP/dialplan configuration for chan_an7581.
+
+. /lib/functions.sh
+
+AST=/etc/asterisk
+PJSIP="$AST/pjsip.conf"
+EXT="$AST/extensions.conf"
+AN="$AST/an7581.conf"
+DEFAULT=/usr/share/voice/voice.default
+LOCK=/var/run/voice-apply.lock
+PJSIP_BIND_CHANGED=0
+TONE_ZONE_CHANGED=0
+
+acquire_lock() {
+    local i=0
+
+    while ! mkdir "$LOCK" 2>/dev/null; do
+        i=$((i + 1))
+        [ "$i" -ge 10 ] && { rm -rf "$LOCK"; mkdir "$LOCK" 2>/dev/null; break; }
+        sleep 1
+    done
+    trap 'rmdir "$LOCK" 2>/dev/null' EXIT
+}
+
+log() { logger -t voice "$*"; echo "voice: $*" >&2; }
+fail() { log "$*"; exit 1; }
+
+get() { uci -q get "voice.$1"; }
+
+# The authentication user may be a full IMPI (user@domain), while the SIP
+# From/PPI user must be only the user part.  Prefer the dedicated phone
+# number field; fall back to the IMPI user part with the domain stripped.
+sip_identity_user() {
+    local user
+
+    user=$(get sip.phone_number)
+    [ -n "$user" ] || user=$(get sip.auth_username)
+    user=${user#sip:}
+    user=${user%%@*}
+    echo "$user"
+}
+
+# The IMS home domain is the domain part of the authentication identity.
+# Fall back to the registrar and then the proxy when the user enters only a
+# bare user name.  This keeps the generated From, REGISTER client_uri and
+# P-Preferred-Identity consistent without a separate "home gateway" field.
+sip_home_domain() {
+    local user domain
+
+    user=$(get sip.auth_username)
+    case "$user" in
+        *@*) domain=${user#*@} ;;
+    esac
+    [ -n "$domain" ] || domain=$(get sip.register_server)
+    [ -n "$domain" ] || domain=$(get sip.proxy_server)
+    echo "$domain"
+}
+
+voice_dev() {
+    local name
+
+    name=$(get network.name)
+    echo "${name:-voice}"
+}
+
+ensure_schema() {
+    if uci -q get voice.config.protocol >/dev/null 2>&1; then
+        return 0
+    fi
+
+    # First release: no field migration.  Keep the old file as a backup and
+    # start from the new schema.  The page and the backend only speak the new
+    # format.
+    [ -f /etc/config/voice ] && cp -f /etc/config/voice /etc/config/voice.bak
+    [ -f "$DEFAULT" ] || fail "missing $DEFAULT"
+    cp -f "$DEFAULT" /etc/config/voice
+    uci commit voice
+    log "initialized /etc/config/voice from the new default (old file saved as voice.bak)"
+}
+
+get_voice_ip() {
+    local dev
+
+    dev=$(voice_dev)
+    ip -4 addr show dev "$dev" 2>/dev/null | awk '/inet / {print $2; exit}' | cut -d/ -f1
+}
+
+get_bind_ip() {
+    local ip
+
+    ip=$(get_voice_ip)
+    [ -n "$ip" ] && { echo "$ip"; return; }
+
+    if [ "$(get network.enabled)" = "1" ] && [ "$(get network.proto)" = "static" ]; then
+        ip=$(get network.ipaddr)
+        [ -n "$ip" ] && { echo "$ip"; return; }
+    fi
+
+    echo 0.0.0.0
+}
+
+wait_voice_ip() {
+    local i=0 ip
+
+    while [ "$i" -lt 5 ]; do
+        ip=$(get_voice_ip)
+        [ -n "$ip" ] && { echo "$ip"; return 0; }
+        sleep 1
+        i=$((i + 1))
+    done
+
+    return 1
+}
+
+find_net_device() {
+    local want="$1" sec
+
+    for sec in $(uci -q show network | sed -n 's/^network\.\([^.]*\)=device$/\1/p'); do
+        [ "$(uci -q get "network.$sec.name")" = "$want" ] && { echo "$sec"; return; }
+    done
+}
+
+validate_ifname() {
+    local name="$1"
+    [ -n "$name" ] && [ "${#name}" -le 15 ] || return 1
+    case "$name" in *[!A-Za-z0-9_.:-]*) return 1 ;; esac
+    return 0
+}
+
+validate_vlan() {
+    local vid="$1"
+    case "$vid" in ''|*[!0-9]*) return 1 ;; esac
+    [ "$vid" -ge 1 ] && [ "$vid" -le 4094 ]
+}
+
+apply_network() {
+    local enabled mode uplink name vid proto mac ipaddr netmask gateway dns
+    local sec dev_name type ifname dev_vid service mcast legacy_dev
+
+    enabled=$(get network.enabled)
+    mode=$(get network.mode)
+    uplink=$(get network.uplink)
+    name=$(get network.name)
+    [ -n "$name" ] || name=voice
+    vid=$(get network.vlan_id)
+    proto=$(get network.proto)
+    mac=$(get network.macaddr)
+    ipaddr=$(get network.ipaddr)
+    netmask=$(get network.netmask)
+    gateway=$(get network.gateway)
+    dns=$(get network.dns)
+
+    if [ "$enabled" != "1" ]; then
+        uci -q delete network.luci_voice_vlan
+        uci -q delete network.voice
+        uci commit network
+        return 0
+    fi
+
+    [ "$mode" = "route" ] || fail "only route mode is implemented (got '$mode')"
+    validate_ifname "${uplink:-pon0}" || fail "invalid voice uplink '${uplink}'"
+    validate_ifname "$name" || fail "invalid voice device name '$name'"
+    validate_vlan "$vid" || fail "voice VLAN is not configured or invalid ('$vid')"
+    uplink=${uplink:-pon0}
+    [ "$proto" = "static" ] || proto=dhcp
+
+    if [ "$proto" = "static" ]; then
+        [ -n "$ipaddr" ] || fail "static voice interface needs an IP address"
+        [ -n "$netmask" ] || fail "static voice interface needs a netmask"
+    fi
+
+    # Take over the legacy vendor voice VLAN when the user selects the same
+    # VLAN.  This is not a field migration: the old interface is unused by
+    # Asterisk, and leaving it in place would put two 8021q devices on one
+    # VLAN.  Preserve its MAC because the operator lease may be tied to it.
+    legacy_dev=$(uci -q get network.voip.device)
+    if [ -n "$legacy_dev" ] && [ "$legacy_dev" = "$uplink.$vid" ]; then
+        if [ -z "$mac" ]; then
+            for sec in $(uci -q show network | sed -n 's/^network\.\([^.]*\)=device$/\1/p'); do
+                [ "$(uci -q get "network.$sec.name")" = "$legacy_dev" ] || continue
+                mac=$(uci -q get "network.$sec.macaddr")
+            done
+            if [ -n "$mac" ]; then
+                uci set voice.network.macaddr="$mac"
+                uci commit voice
+            fi
+        fi
+        log "removing legacy network.voip ($legacy_dev) for the managed voice interface"
+        uci -q delete network.voip
+        for sec in $(uci -q show network | sed -n 's/^network\.\([^.]*\)=device$/\1/p'); do
+            [ "$(uci -q get "network.$sec.name")" = "$legacy_dev" ] && uci -q delete "network.$sec"
+        done
+        uci commit network
+    fi
+
+    # VLAN conflict check against the other 8021q devices on the same uplink.
+    for sec in $(uci -q show network | sed -n 's/^network\.\([^.]*\)=device$/\1/p'); do
+        [ "$sec" = "luci_voice_vlan" ] && continue
+        dev_name=$(uci -q get "network.$sec.name")
+        [ -n "$dev_name" ] && [ "$dev_name" = "$name" ] && continue
+        [ "$dev_name" = "voip" ] && continue
+        [ "$dev_name" = "$uplink.$vid" ] && continue
+        type=$(uci -q get "network.$sec.type")
+        ifname=$(uci -q get "network.$sec.ifname")
+        dev_vid=$(uci -q get "network.$sec.vid")
+        [ "$type" = "8021q" ] || continue
+        [ "$ifname" = "$uplink" ] || continue
+        [ "$dev_vid" = "$vid" ] || continue
+        fail "VLAN $vid is already used by ${dev_name:-$sec}; remove or disable that interface first"
+    done
+
+    service=$(uci -q get iptv.config.service_vid)
+    mcast=$(uci -q get iptv.config.mcast_vid)
+    [ -n "$service" ] && [ "$vid" = "$service" ] && fail "VLAN $vid is the IPTV service VLAN"
+    [ -n "$mcast" ] && [ "$vid" = "$mcast" ] && fail "VLAN $vid is the IPTV multicast VLAN"
+
+    uci -q delete network.luci_voice_vlan
+    uci set network.luci_voice_vlan=device
+    uci set network.luci_voice_vlan.type=8021q
+    uci set network.luci_voice_vlan.ifname="$uplink"
+    uci set network.luci_voice_vlan.vid="$vid"
+    uci set network.luci_voice_vlan.name="$name"
+    [ -n "$mac" ] && uci set network.luci_voice_vlan.macaddr="$mac"
+
+    uci -q delete network.voice
+    uci set network.voice=interface
+    uci set network.voice.device="$name"
+    uci set network.voice.proto="$proto"
+    uci set network.voice.auto=1
+    uci set network.voice.force_link=1
+    uci set network.voice.delegate=0
+    uci set network.voice.metric=2100
+    uci set network.voice.ip4table=101
+    uci set network.voice.luci_voice=1
+
+    if [ "$proto" = "static" ]; then
+        uci set network.voice.ipaddr="$ipaddr"
+        uci set network.voice.netmask="$netmask"
+        if [ -n "$gateway" ]; then uci set network.voice.gateway="$gateway"; else uci -q delete network.voice.gateway; fi
+        if [ -n "$dns" ]; then uci set network.voice.dns="$dns"; else uci -q delete network.voice.dns; fi
+    else
+        uci -q delete network.voice.ipaddr
+        uci -q delete network.voice.netmask
+        uci -q delete network.voice.gateway
+        uci -q delete network.voice.dns
+    fi
+
+    uci commit network
+    log "voice network: $uplink.$vid -> $name / voice ($proto)"
+}
+
+apply_firewall() {
+    local enabled
+
+    enabled=$(get network.enabled)
+
+    if ! uci -q get network.voip >/dev/null 2>&1; then
+        for zone in $(uci -q show firewall | sed -n 's/^firewall\.\([^.]*\)=zone$/\1/p'); do
+            uci -q del_list "firewall.$zone.network=voip"
+        done
+    fi
+
+    uci -q delete firewall.luci_voice_zone
+    uci -q delete firewall.luci_voice_sip
+    uci -q delete firewall.luci_voice_rtp
+
+    if [ "$enabled" = "1" ]; then
+        uci set firewall.luci_voice_zone=zone
+        uci set firewall.luci_voice_zone.name=voice
+        uci set firewall.luci_voice_zone.input=DROP
+        uci set firewall.luci_voice_zone.output=ACCEPT
+        uci set firewall.luci_voice_zone.forward=DROP
+        uci add_list firewall.luci_voice_zone.network=voice
+
+        uci set firewall.luci_voice_sip=rule
+        uci set firewall.luci_voice_sip.name=Allow-Voice-SIP
+        uci set firewall.luci_voice_sip.src=voice
+        uci add_list firewall.luci_voice_sip.proto=udp
+        uci add_list firewall.luci_voice_sip.proto=tcp
+        uci set firewall.luci_voice_sip.dest_port=5060
+        uci set firewall.luci_voice_sip.target=ACCEPT
+        uci set firewall.luci_voice_sip.family=ipv4
+
+        uci set firewall.luci_voice_rtp=rule
+        uci set firewall.luci_voice_rtp.name=Allow-Voice-RTP
+        uci set firewall.luci_voice_rtp.src=voice
+        uci set firewall.luci_voice_rtp.proto=udp
+        uci set firewall.luci_voice_rtp.dest_port=10000-20000
+        uci set firewall.luci_voice_rtp.target=ACCEPT
+        uci set firewall.luci_voice_rtp.family=ipv4
+    fi
+
+    uci commit firewall
+}
+
+CODEC_TMP=
+
+voice_codec_entry() {
+    local sec="$1" name prio
+    config_get name "$sec" codec
+    config_get prio "$sec" priority
+    [ -n "$name" ] && echo "${prio:-99}|$name" >> "$CODEC_TMP"
+}
+
+collect_codecs() {
+    local out
+
+    CODEC_TMP=/tmp/voice-codecs.$$
+    : > "$CODEC_TMP"
+    config_load voice
+    config_foreach voice_codec_entry codec
+
+    out=$(sort -n "$CODEC_TMP" | while IFS='|' read -r prio name; do
+        case "$name" in
+            G.711ALaw|G.711A*) echo alaw ;;
+            G.711MuLaw|G.711U*) echo ulaw ;;
+            G.722) echo g722 ;;
+            G.729) [ -f /usr/lib/asterisk/modules/codec_g729.so ] && echo g729 ;;
+        esac
+    done | awk '!seen[$0]++')
+
+    rm -f "$CODEC_TMP"
+    [ -n "$out" ] || out="alaw ulaw"
+    echo "$out"
+}
+
+effective_transport() {
+    case "$1" in
+        tcp) echo tcp ;;
+        tls)
+            if [ -f /etc/asterisk/keys/asterisk.pem ]; then
+                echo tls
+            else
+                log "TLS requested but /etc/asterisk/keys/asterisk.pem is missing; using UDP"
+                echo udp
+            fi
+            ;;
+        *) echo udp ;;
+    esac
+}
+
+dtmf_mode() {
+    case "$1" in
+        RFC2833) echo rfc4733 ;;
+        SIPInfo) echo info ;;
+        InBand) echo inband ;;
+        *) echo auto ;;
+    esac
+}
+
+write_pjsip() {
+    local enabled protocol sip_user auth_user auth_pass
+    local proxy_host proxy_port proxy_transport reg_host reg_port reg_transport
+    local out_host out_port out_transport home_domain
+    local signalling_dscp media_dscp heartbeat_enabled heartbeat_period
+    local heartbeat_mode register_period register_retry
+    local session_update min_session_update fax_mode
+    local dtmf_raw dtmf_name codecs bind_ip transport_list t
+    local proxy_eff reg_eff out_eff reg_uri proxy_uri
+    local register_flag provider=0
+
+    enabled=$(get config.enabled)
+    protocol=$(get config.protocol)
+    sip_user=$(sip_identity_user)
+    auth_user=$(get sip.auth_username)
+    [ -n "$auth_user" ] || auth_user="$sip_user"
+    auth_pass=$(get sip.auth_password)
+    dtmf_raw=$(get config.dtmf_method)
+    dtmf_name=$(dtmf_mode "$dtmf_raw")
+    fax_mode=$(get config.fax_mode)
+
+    proxy_host=$(get sip.proxy_server)
+    proxy_port=$(get sip.proxy_port); [ -n "$proxy_port" ] || proxy_port=5060
+    proxy_transport=$(get sip.proxy_transport); [ -n "$proxy_transport" ] || proxy_transport=udp
+    reg_host=$(get sip.register_server)
+    reg_port=$(get sip.register_port); [ -n "$reg_port" ] || reg_port=5060
+    reg_transport=$(get sip.register_transport); [ -n "$reg_transport" ] || reg_transport=udp
+    out_host=$(get sip.outbound_server)
+    out_port=$(get sip.outbound_port); [ -n "$out_port" ] || out_port=5060
+    out_transport=$(get sip.proxy_transport); [ -n "$out_transport" ] || out_transport=udp
+    signalling_dscp=$(get sip.signalling_dscp); [ -n "$signalling_dscp" ] || signalling_dscp=0
+    media_dscp=$(get sip.media_dscp); [ -n "$media_dscp" ] || media_dscp=0
+    heartbeat_enabled=$(get sip.heartbeat_enabled); [ -n "$heartbeat_enabled" ] || heartbeat_enabled=0
+    heartbeat_period=$(get sip.heartbeat_period); [ -n "$heartbeat_period" ] || heartbeat_period=60
+    heartbeat_mode=$(get sip.heartbeat_mode); [ -n "$heartbeat_mode" ] || heartbeat_mode=active
+    register_period=$(get sip.register_period); [ -n "$register_period" ] || register_period=3600
+    register_retry=$(get sip.register_retry_period); [ -n "$register_retry" ] || register_retry=60
+    session_update=$(get sip.session_update_period); [ -n "$session_update" ] || session_update=30
+    min_session_update=$(get sip.min_session_update_period); [ -n "$min_session_update" ] || min_session_update=1
+
+    [ -n "$reg_host" ] || reg_host="$proxy_host"
+    [ -n "$proxy_host" ] || proxy_host="$reg_host"
+    [ -n "$out_host" ] || out_host="$proxy_host"
+    home_domain=$(sip_home_domain)
+    register_flag=$(get sip.register); [ -n "$register_flag" ] || register_flag=1
+
+    proxy_eff=$(effective_transport "$proxy_transport")
+    reg_eff=$(effective_transport "$reg_transport")
+    out_eff=$(effective_transport "$out_transport")
+
+    transport_list="udp"
+    for t in "$proxy_eff" "$reg_eff" "$out_eff"; do
+        case " $transport_list " in *" $t "*) ;; *) transport_list="$transport_list $t" ;; esac
+    done
+
+    bind_ip=$(get_bind_ip)
+    new_bind="$bind_ip:5060"
+    old_bind=$(sed -n 's/^bind=//p' "$PJSIP" 2>/dev/null | head -1)
+    if [ -n "$old_bind" ] && [ "$old_bind" != "$new_bind" ]; then
+        PJSIP_BIND_CHANGED=1
+    fi
+    codecs=$(collect_codecs)
+
+    [ "$enabled" = "1" ] || provider=0
+    [ -n "$sip_user" ] && [ -n "$reg_host" ] && [ "$enabled" = "1" ] && provider=1
+
+    [ -d "$AST" ] || mkdir -p "$AST"
+    [ -f "$PJSIP" ] && cp -f "$PJSIP" "$PJSIP.bak" 2>/dev/null || true
+
+    {
+        echo "[global]"
+        echo "type=global"
+        echo "user_agent=AN7581"
+        echo
+
+        # Asterisk 23 in this tree does not expose the codec preference
+        # options; the endpoint's allow= order is the effective preference.
+
+        for t in $transport_list; do
+            echo "[transport-$t]"
+            echo "type=transport"
+            echo "protocol=$t"
+            if [ "$t" = "tls" ]; then
+                echo "bind=$bind_ip:5061"
+                echo "cert_file=/etc/asterisk/keys/asterisk.pem"
+                echo "privkey_file=/etc/asterisk/keys/asterisk.pem"
+                echo "method=tlsv1_2"
+            else
+                echo "bind=$bind_ip:5060"
+            fi
+            [ "$signalling_dscp" -gt 0 ] 2>/dev/null && echo "tos=$((signalling_dscp * 4))"
+            echo
+        done
+
+        if [ "$provider" = "1" ]; then
+            reg_uri="sip:$reg_host:$reg_port"
+            [ "$reg_eff" != "udp" ] && reg_uri="$reg_uri\;transport=$reg_eff"
+            proxy_uri="sip:$out_host:$out_port"
+            [ "$out_eff" != "udp" ] && proxy_uri="$proxy_uri\;transport=$out_eff"
+            proxy_uri="$proxy_uri\;lr"
+
+            if [ -n "$auth_user" ] && [ -n "$auth_pass" ]; then
+                echo "[provider-auth]"
+                echo "type=auth"
+                echo "auth_type=userpass"
+                echo "username=$auth_user"
+                echo "password=$auth_pass"
+                echo
+            fi
+
+            echo "[provider-aor]"
+            echo "type=aor"
+            echo "contact=$reg_uri"
+            echo "max_contacts=1"
+            echo "remove_existing=yes"
+            if [ "$heartbeat_enabled" = "1" ] && [ "$heartbeat_mode" = "active" ]; then
+                echo "qualify_frequency=$heartbeat_period"
+                echo "qualify_timeout=3.0"
+            fi
+            echo
+
+            echo "[provider]"
+            echo "type=endpoint"
+            echo "transport=transport-$reg_eff"
+            echo "context=from-sip"
+            echo "identify_by=ip"
+            echo "disallow=all"
+            for t in $codecs; do echo "allow=$t"; done
+            [ -n "$auth_user" ] && [ -n "$auth_pass" ] && echo "outbound_auth=provider-auth"
+            echo "aors=provider-aor"
+            [ -n "$sip_user" ] && echo "from_user=$sip_user"
+            [ -n "$home_domain" ] && echo "from_domain=$home_domain"
+            echo "outbound_proxy=$proxy_uri"
+            echo "direct_media=no"
+            echo "rtp_symmetric=yes"
+            echo "force_rport=yes"
+            echo "rewrite_contact=yes"
+            echo "timers=yes"
+            min_se=$((min_session_update * 60))
+            [ "$min_se" -lt 90 ] && min_se=90
+            sess_exp=$((session_update * 60))
+            [ "$sess_exp" -lt "$min_se" ] && sess_exp=$min_se
+            echo "timers_min_se=$min_se"
+            echo "timers_sess_expires=$sess_exp"
+            [ "$media_dscp" -gt 0 ] 2>/dev/null && { echo "tos_audio=$((media_dscp * 4))"; echo "tos_video=$((media_dscp * 4))"; }
+            echo "dtmf_mode=$dtmf_name"
+            [ "$fax_mode" = "g711" ] && echo "fax_detect=yes"
+            [ "$protocol" = "ims_sip" ] && echo "user_eq_phone=yes"
+            echo
+
+            if [ "$register_flag" = "1" ]; then
+                echo "[provider-reg]"
+                echo "type=registration"
+                echo "transport=transport-$reg_eff"
+                echo "server_uri=$reg_uri"
+                echo "client_uri=sip:$sip_user@$home_domain"
+                echo "contact_user=$sip_user"
+                [ -n "$proxy_uri" ] && echo "outbound_proxy=$proxy_uri"
+                echo "max_random_initial_delay=0"
+                [ -n "$auth_user" ] && [ -n "$auth_pass" ] && echo "outbound_auth=provider-auth"
+                echo "expiration=$register_period"
+                echo "retry_interval=$register_retry"
+                echo "forbidden_retry_interval=$register_retry"
+                echo "max_retries=10"
+                echo
+            fi
+
+            echo "[provider-identify]"
+            echo "type=identify"
+            echo "endpoint=provider"
+            for t in "$proxy_host" "$out_host" "$reg_host"; do
+                [ -n "$t" ] || continue
+                echo "$t" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' || continue
+                echo "match=$t"
+            done | awk '!seen[$0]++'
+            echo
+        fi
+    } > "$PJSIP"
+}
+
+write_dialplan() {
+    local enabled protocol test_mode line timeout inbound fixed no_answer_timer
+    local digitmap_enabled short_timer offhook_timer busy_timer digit_map raw pat
+    local sip_user home_domain ppi_uri dial_opt
+
+    enabled=$(get config.enabled)
+    protocol=$(get config.protocol)
+    test_mode=$(get config.test_mode)
+    line=$(get config.line_name); [ -n "$line" ] || line=line1
+    timeout=$(get config.dial_timeout); [ -n "$timeout" ] || timeout=60
+    inbound=$(get config.inbound); [ -n "$inbound" ] || inbound=1
+    no_answer_timer=$(get config.no_answer_timer); [ -n "$no_answer_timer" ] || no_answer_timer=60
+    fixed=$(get config.fixed_number)
+    digitmap_enabled=$(get digitmap.enabled)
+    short_timer=$(get digitmap.short_timer); [ -n "$short_timer" ] || short_timer=5
+    offhook_timer=$(get digitmap.offhook_timer); [ -n "$offhook_timer" ] || offhook_timer=15
+    busy_timer=$(get config.busy_tone_timer); [ -n "$busy_timer" ] || busy_timer=40
+    digit_map=$(get digitmap.digit_map)
+
+    # IMS expects the UE to send P-Preferred-Identity.  Asterisk only copies
+    # the P-Associated-URI from the REGISTER response onto flow (TCP/TLS)
+    # transports, so add it explicitly on this UDP registration.
+    sip_user=$(sip_identity_user)
+    home_domain=$(sip_home_domain)
+    ppi_uri=
+    if [ "$protocol" = "ims_sip" ] && [ -n "$sip_user" ] && [ -n "$home_domain" ]; then
+        ppi_uri="<sip:${sip_user}@${home_domain}\;user=phone>"
+    fi
+    dial_opt=
+    [ -n "$ppi_uri" ] && dial_opt=",b(voice-ppi^s^1(${ppi_uri}))"
+
+    [ -f "$EXT" ] && cp -f "$EXT" "$EXT.bak" 2>/dev/null || true
+
+    {
+        echo "[general]"
+        echo "static=yes"
+        echo "writeprotect=no"
+        echo "clearglobalvars=no"
+        echo
+        echo "[from-analog]"
+
+        if [ "$enabled" != "1" ]; then
+            echo "exten => s,1,Hangup()"
+        elif [ "$test_mode" = "echo" ] || [ -z "$test_mode" ]; then
+            echo "exten => s,1,Answer()"
+            echo " same => n,Echo()"
+        elif [ "$test_mode" = "sip_fixed" ]; then
+            [ -n "$fixed" ] || fixed=1000
+            echo "exten => s,1,Answer()"
+            echo " same => n,Dial(PJSIP/$fixed@provider,$timeout)"
+            echo " same => n,Hangup()"
+        elif [ "$test_mode" = "sip_read" ]; then
+            echo "exten => s,1,Answer()"
+            echo " same => n,Read(NUMBER,,20,,,10)"
+            echo " same => n,Dial(PJSIP/\${NUMBER}@provider,$timeout)"
+            echo " same => n,Hangup()"
+        elif [ "$test_mode" = "sip_digitmap" ]; then
+            echo "exten => s,1,Answer()"
+            echo " same => n,Read(FIRST,dial,1,i,,$offhook_timer)"
+            echo " same => n,GotoIf(\$[\"\${FIRST}\"=\"\"]?congestion,1)"
+            echo " same => n,Read(REST,,19,,,$short_timer)"
+            echo " same => n,Set(NUMBER=\${FIRST}\${REST})"
+            echo " same => n,NoOp(Voice dialled \${NUMBER})"
+            echo " same => n,Goto(from-analog,\${NUMBER},1)"
+            echo " same => n,Hangup()"
+
+            if [ "$digitmap_enabled" = "1" ] && [ -n "$digit_map" ]; then
+                echo "$digit_map" | tr '|' '\n' | while IFS= read -r raw; do
+                    pat=$(echo "$raw" | tr -d ' \t\r' | sed 's/[SLT]$//' | sed 's/x/X/g')
+                    [ -n "$pat" ] || continue
+                    echo "$pat" | grep -qE '^[]0-9X*#.+[-]+$' || continue
+                    echo "exten => _$pat,1,Dial(PJSIP/\${EXTEN}@provider,$timeout$dial_opt)"
+                    echo " same => n,Hangup()"
+                done
+                echo "exten => _X.,1,Playtones(congestion)"
+                echo " same => n,Wait($busy_timer)"
+                echo " same => n,Hangup()"
+            else
+                echo "exten => _X.,1,NoOp(Voice calling \${EXTEN})"
+                echo " same => n,Dial(PJSIP/\${EXTEN}@provider,$timeout$dial_opt)"
+                echo " same => n,Hangup()"
+            fi
+
+            echo "exten => congestion,1,Playtones(congestion)"
+            echo " same => n,Wait($busy_timer)"
+            echo " same => n,Hangup()"
+        else
+            echo "exten => s,1,Answer()"
+            echo " same => n,Echo()"
+        fi
+
+        echo
+        echo "[from-sip]"
+        if [ "$inbound" = "1" ]; then
+            echo "exten => _+X.,1,Dial(AN7581/$line,$no_answer_timer)"
+            echo " same => n,Hangup()"
+            echo "exten => _X.,1,Dial(AN7581/$line,$no_answer_timer)"
+            echo " same => n,Hangup()"
+        else
+            echo "exten => _+X.,1,Hangup()"
+            echo "exten => _X.,1,Hangup()"
+        fi
+
+        echo
+        echo "[voice-ppi]"
+        echo "exten => s,1,Set(PJSIP_HEADER(add,P-Preferred-Identity)=\${ARG1})"
+        echo " same => n,Return()"
+    } > "$EXT"
+}
+
+write_an7581() {
+    local line tx rx ec
+
+    line=$(get config.line_name); [ -n "$line" ] || line=line1
+    tx=$(get config.transmit_gain); [ -n "$tx" ] || tx=0
+    rx=$(get config.receive_gain); [ -n "$rx" ] || rx=0
+    ec=$(get config.echo_cancellation); [ -n "$ec" ] || ec=1
+
+    [ -f "$AN" ] && cp -f "$AN" "$AN.bak" 2>/dev/null || true
+
+    {
+        echo "[general]"
+        echo "pcm_dev = /dev/an7581-pcm"
+        echo "slic_dev = /dev/an7581-slic"
+        echo "context = from-analog"
+        echo "exten = s"
+        echo "line_name = $line"
+        echo "tx_gain = $tx"
+        echo "rx_gain = $rx"
+        echo "echo_cancellation = $ec"
+        echo "dialtone_notch = 450"
+    } > "$AN"
+}
+
+apply_echo_cancellation() {
+    local ec p
+
+    ec=$(get config.echo_cancellation); [ -n "$ec" ] || ec=1
+    for p in /sys/module/an7581_pcm/parameters/lec_enable \
+             /sys/module/an7581-pcm/parameters/lec_enable; do
+        [ -w "$p" ] || continue
+        if echo "$ec" > "$p" 2>/dev/null; then
+            log "OSLEC $([ "$ec" = 1 ] && echo on || echo off)"
+            return 0
+        fi
+    done
+    return 0
+}
+
+ensure_tone_zone() {
+    local f="$AST/indications.conf"
+
+    [ -f "$f" ] || return 0
+    grep -q '^country=cn' "$f" && return 0
+    sed -i 's/^country=us/country=cn/' "$f"
+    if grep -q '^country=cn' "$f"; then
+        TONE_ZONE_CHANGED=1
+        log "indications: country=cn"
+    fi
+}
+
+reload_asterisk() {
+    local mod
+
+    pidof asterisk >/dev/null 2>&1 || return 0
+
+    if [ "${PJSIP_BIND_CHANGED:-0}" = 1 ] || [ "${TONE_ZONE_CHANGED:-0}" = 1 ]; then
+        log "PJSIP transport bind or tone zone changed; restarting Asterisk"
+        /etc/init.d/asterisk restart >/dev/null 2>&1 || true
+        sleep 1
+        return
+    fi
+
+    asterisk -rx 'dialplan reload' >/dev/null 2>&1 || true
+    for mod in res_pjsip res_pjsip_outbound_registration res_pjsip_endpoint_identifier_ip; do
+        asterisk -rx "module reload $mod.so" >/dev/null 2>&1 || true
+    done
+}
+
+reload_network() {
+    pidof netifd >/dev/null 2>&1 || return 0
+    ubus call network reload >/dev/null 2>&1 || true
+    /etc/init.d/firewall reload >/dev/null 2>&1 || true
+}
+
+status() {
+    local service_enabled protocol test_mode asterisk_running active_calls
+    local net_enabled net_mode net_vlan net_dev net_state net_ip net_gw net_mac net_rule
+    local sip_configured sip_register sip_registrar sip_proxy sip_user sip_transport
+    local sip_registration sip_registration_detail sip_endpoint
+    local fxs_line fxs_hook fxs_state pcm_present fxs_device pcm_channel terminal_id line regline trans_line carrier
+
+    service_enabled=$(get config.enabled)
+    protocol=$(get config.protocol)
+    test_mode=$(get config.test_mode)
+    asterisk_running=0
+    pidof asterisk >/dev/null 2>&1 && asterisk_running=1
+    active_calls=0
+    if [ "$asterisk_running" = 1 ]; then
+        active_calls=$(asterisk -rx 'core show channels' 2>/dev/null | \
+            sed -n 's/^\([0-9][0-9]*\) active channels.*/\1/p' | head -1)
+        [ -n "$active_calls" ] || active_calls=0
+    fi
+
+    net_enabled=$(get network.enabled)
+    net_mode=$(get network.mode)
+    net_vlan=$(get network.vlan_id)
+    net_dev=$(voice_dev)
+    net_state=disabled
+    net_ip=
+    net_gw=
+    net_mac=
+    net_rule=0
+    if [ "$net_enabled" = 1 ]; then
+        if [ ! -e "/sys/class/net/$net_dev" ]; then
+            net_state=missing
+        else
+            net_mac=$(cat "/sys/class/net/$net_dev/address" 2>/dev/null)
+            net_ip=$(ip -4 addr show dev "$net_dev" 2>/dev/null | \
+                awk '/inet / {print $2; exit}' | cut -d/ -f1)
+            carrier=$(cat "/sys/class/net/$net_dev/carrier" 2>/dev/null)
+            if [ -n "$net_ip" ]; then
+                net_gw=$(ip route show table 101 2>/dev/null | \
+                    awk '/^default/ {print $3; exit}')
+                ip rule show 2>/dev/null | grep -q "from $net_ip.*lookup 101" && \
+                    net_rule=1 || net_rule=0
+                [ "$carrier" = 1 ] && net_state=up || net_state=no-carrier
+            else
+                [ "$carrier" = 1 ] && net_state=no-ip || net_state=no-carrier
+            fi
+        fi
+    fi
+
+    sip_registrar=$(get sip.register_server)
+    [ -n "$sip_registrar" ] || sip_registrar=$(get sip.proxy_server)
+    sip_proxy=$(get sip.outbound_server)
+    [ -n "$sip_proxy" ] || sip_proxy=$(get sip.proxy_server)
+    sip_register=$(get sip.register); [ -n "$sip_register" ] || sip_register=1
+    sip_user=$(sip_identity_user)
+    sip_configured=0
+    [ -n "$sip_registrar" ] && [ -n "$sip_user" ] && sip_configured=1
+
+    sip_transport=
+    sip_registration=none
+    sip_registration_detail=
+    sip_endpoint=0
+    if [ "$asterisk_running" = 1 ]; then
+        trans_line=$(asterisk -rx 'pjsip show transports' 2>/dev/null | \
+            awk '/transport-/{print $2 " (" $6 ")"; exit}')
+        [ -n "$trans_line" ] && sip_transport="$trans_line"
+        asterisk -rx 'pjsip show endpoints' 2>/dev/null | \
+            grep -q 'Endpoint:.*provider' && sip_endpoint=1
+    fi
+
+    if [ "$sip_configured" = 0 ]; then
+        sip_registration=not-configured
+    elif [ "$sip_register" = 0 ]; then
+        sip_registration=disabled
+    elif [ "$asterisk_running" = 0 ]; then
+        sip_registration=asterisk-down
+    elif [ "$sip_endpoint" = 0 ]; then
+        sip_registration=not-loaded
+    else
+        regline=$(asterisk -rx 'pjsip show registrations' 2>/dev/null | \
+            grep 'provider-reg' | head -1)
+        if [ -z "$regline" ]; then
+            sip_registration=not-loaded
+        else
+            sip_registration_detail=$(echo "$regline" | sed 's/^[[:space:]]*//')
+            sip_registration=$(echo "$regline" | \
+                grep -oE 'Registered|Unregistered|Rejected|Stopped|Unreachable' | head -1)
+            [ -n "$sip_registration" ] || sip_registration=unknown
+        fi
+    fi
+
+    fxs_line=$(cat /proc/an7581-slic 2>/dev/null)
+    fxs_hook=$(echo "$fxs_line" | sed -n 's/.*hook=//p')
+    fxs_state=$(echo "$fxs_line" | sed -n 's/.*state=\([^ ]*\).*/\1/p')
+    [ -n "$fxs_hook" ] || fxs_hook=unknown
+    [ -n "$fxs_state" ] || fxs_state=unknown
+    case "$fxs_state" in
+        0x*) ;;
+        unknown) ;;
+        *) fxs_state="0x$fxs_state" ;;
+    esac
+    pcm_present=0
+    [ -e /dev/an7581-pcm ] && pcm_present=1
+    line=$(get config.line_name)
+    [ -n "$line" ] || line=line1
+    fxs_device=/dev/an7581-slic
+    pcm_channel='PCM0 (channel 0, slot 4)'
+    terminal_id="AN7581/$line"
+
+    echo "service_enabled=$service_enabled"
+    echo "service_protocol=$protocol"
+    echo "service_test_mode=$test_mode"
+    echo "asterisk_running=$asterisk_running"
+    echo "active_calls=$active_calls"
+    echo "network_enabled=$net_enabled"
+    echo "network_mode=$net_mode"
+    echo "network_vlan=$net_vlan"
+    echo "network_device=$net_dev"
+    echo "network_state=$net_state"
+    echo "network_ip=$net_ip"
+    echo "network_gateway=$net_gw"
+    echo "network_mac=$net_mac"
+    echo "network_rule=$net_rule"
+    echo "sip_configured=$sip_configured"
+    echo "sip_register=$sip_register"
+    echo "sip_registrar=$sip_registrar"
+    echo "sip_proxy=$sip_proxy"
+    echo "sip_transport=$sip_transport"
+    echo "sip_registration=$sip_registration"
+    echo "sip_registration_detail=$sip_registration_detail"
+    echo "sip_endpoint=$sip_endpoint"
+    echo "fxs_device=$fxs_device"
+    echo "pcm_channel=$pcm_channel"
+    echo "terminal_id=$terminal_id"
+    echo "fxs_hook=$fxs_hook"
+    echo "fxs_state=$fxs_state"
+    echo "pcm_present=$pcm_present"
+}
+
+case "${1:-apply}" in
+    boot)
+        acquire_lock
+        ensure_schema
+        apply_network
+        apply_firewall
+        ensure_tone_zone
+        write_pjsip
+        write_dialplan
+        write_an7581
+        apply_echo_cancellation
+        ;;
+    apply|reload)
+        acquire_lock
+        ensure_schema
+        apply_network
+        apply_firewall
+        ensure_tone_zone
+        write_pjsip
+        write_dialplan
+        write_an7581
+        apply_echo_cancellation
+        reload_network
+        if [ "$(get network.enabled)" = 1 ] && wait_voice_ip >/dev/null 2>&1; then
+            write_pjsip
+        fi
+        reload_asterisk
+        ;;
+    hotplug)
+        acquire_lock
+        ensure_schema
+        ensure_tone_zone
+        if [ "${2:-up}" != "down" ]; then
+            wait_voice_ip >/dev/null 2>&1 || true
+        fi
+        write_pjsip
+        reload_asterisk
+        log "hotplug: voice ip=$(get_bind_ip)"
+        ;;
+    restart)
+        acquire_lock
+        ensure_schema
+        ensure_tone_zone
+        write_pjsip
+        apply_echo_cancellation
+        /etc/init.d/asterisk restart >/dev/null 2>&1 || true
+        sleep 1
+        status
+        ;;
+    status)
+        status
+        ;;
+    *)
+        echo "usage: $0 {boot|apply|reload|hotplug|restart|status}" >&2
+        exit 1
+        ;;
+esac

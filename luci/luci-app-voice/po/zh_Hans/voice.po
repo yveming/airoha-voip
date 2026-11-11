@@ -1,0 +1,981 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: luci-app-voice\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-11-10 22:53+0800\n"
+"PO-Revision-Date: 2026-10-13 22:57+0800\n"
+"Last-Translator: Ziyou Xu <xuziyougm@gmail.com>\n"
+"Language-Team: Chinese (Simplified)\n"
+"Language: zh_Hans\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:46
+msgid "The maximum flash hook interval must be greater than the minimum one."
+msgstr "拍叉时间间隔的最大值必须大于最小值。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:79
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:256
+msgid "Use a Linux network device name containing at most 15 characters."
+msgstr "请输入不超过 15 个字符的 Linux 网络设备名称。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:118
+#, javascript-format
+msgid "This VLAN is already used by %s; pick a different one."
+msgstr "该 VLAN 已被 %s 使用，请换一个。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:125
+msgid "This VLAN carries IPTV; pick a different one for voice."
+msgstr "该 VLAN 承载 IPTV，请为语音换一个。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:216
+msgid "voice-apply failed"
+msgstr "voice-apply 执行失败"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:218
+msgid "Voice configuration applied."
+msgstr "语音配置已应用。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:220
+#, javascript-format
+msgid "Voice configuration failed: %s"
+msgstr "语音配置失败：%s"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:229
+msgid "Configure the voice service network, SIP account, digit map and codecs."
+msgstr "配置语音业务网络、SIP 账号、数图和编码。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:241
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:222
+msgid "Voice service network"
+msgstr "语音业务网络"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:242
+msgid "The voice VLAN is terminated locally (route mode)."
+msgstr "语音 VLAN 在本机终结（route 模式）。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:246
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:326
+msgid "Enable"
+msgstr "启用"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:250
+msgid "Uplink device"
+msgstr "上行设备"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:251
+msgid "Network device carrying the operator VLANs, normally pon0."
+msgstr "承载运营商 VLAN 的网络设备，通常是 pon0。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:261
+msgid "Device name"
+msgstr "设备名"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:262
+msgid "Linux name of the voice VLAN device. Default: voice."
+msgstr "语音 VLAN 设备名，默认 voice。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:268
+msgid "VLAN ID"
+msgstr "VLAN ID"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:269
+msgid "VLAN carrying the voice service."
+msgstr "承载语音业务的 VLAN。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:276
+msgid "MAC address"
+msgstr "MAC 地址"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:277
+msgid "Optional. Override the MAC address of the voice interface."
+msgstr "可选。覆盖语音接口的 MAC 地址。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:282
+msgid "IP assignment"
+msgstr "IP 获取方式"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:283
+msgid "How the voice interface obtains its address."
+msgstr "语音接口如何获取 IP 地址。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:286
+msgid "DHCP"
+msgstr "DHCP"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:287
+msgid "Static"
+msgstr "静态"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:290
+msgid "IP address"
+msgstr "IP 地址"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:291
+msgid "Address of the voice interface on the voice VLAN."
+msgstr "语音接口在语音 VLAN 上的地址。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:297
+msgid "Subnet mask"
+msgstr "子网掩码"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:303
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:186
+msgid "Gateway"
+msgstr "网关"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:310
+msgid "DNS servers"
+msgstr "DNS 服务器"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:311
+msgid "Comma-separated DNS servers used by the voice service."
+msgstr "语音服务使用的 DNS 服务器，多个用逗号分隔。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:321
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:223
+msgid "Voice service"
+msgstr "语音业务"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:322
+msgid ""
+"Signalling protocol, DTMF transfer, tone timers and registration account of "
+"the FXS port."
+msgstr "FXS 端口的信令协议、DTMF 传输方式、音调定时器及注册账号。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:330
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:168
+msgid "Test mode"
+msgstr "测试模式"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:331
+msgid ""
+"Echo returns the audio to the phone; SIP modes send the call to the provider."
+msgstr "回声模式把音频送回话机；SIP 模式把呼叫送到运营商。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:333
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:49
+msgid "Echo test"
+msgstr "回声测试"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:334
+msgid "SIP: read digits from the phone"
+msgstr "SIP：从话机读取号码"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:335
+msgid "SIP: dial a fixed number"
+msgstr "SIP：拨固定号码"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:336
+msgid "SIP: use the dial plan"
+msgstr "SIP：使用数图拨号"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:339
+msgid "Fixed destination"
+msgstr "固定目的号码"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:343
+msgid "Channel line name"
+msgstr "通道线路名"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:346
+msgid "Changing this requires an Asterisk restart."
+msgstr "修改后需要重启 Asterisk。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:348
+msgid "Dial timeout (s)"
+msgstr "拨号超时（秒）"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:353
+msgid "Inbound SIP calls ring the FXS phone"
+msgstr "入局 SIP 呼叫振铃 FXS 话机"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:357
+msgid "Voice protocol"
+msgstr "语音协议"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:358
+msgid "The signalling protocol spoken with the softswitch."
+msgstr "与软交换通信所用的信令协议。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:360
+msgid "Softswitch SIP"
+msgstr "软交换 SIP"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:361
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:42
+msgid "IMS SIP"
+msgstr "IMS SIP"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:364
+msgid "DTMF transfer mode"
+msgstr "DTMF 转移模式"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:366
+msgid "Transparent (in-band)"
+msgstr "透传"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:367
+msgid "RFC 2833"
+msgstr "RFC 2833"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:368
+msgid "SIP INFO"
+msgstr "SIP INFO"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:371
+msgid "Payload type value"
+msgstr "载荷类型值"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:372
+msgid ""
+"Stored for reference; PJSIP negotiates the telephone-event payload from SDP."
+msgstr "仅保存参考；PJSIP 按 SDP 协商 telephone-event 负载类型。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:378
+msgid "Calling line identification"
+msgstr "来电显示"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:379
+msgid "How the calling number is presented on the FXS port."
+msgstr "FXS 口上主叫号码的显示方式。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:381
+msgid "FSK"
+msgstr "FSK"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:384
+msgid "Flash hook minimum (ms)"
+msgstr "拍叉时间间隔最小值(毫秒)"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:385
+msgid "Shortest hook flash still recognised as a flash."
+msgstr "仍能被识别为拍叉的最短间隔。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:390
+msgid "Flash hook maximum (ms)"
+msgstr "拍叉时间间隔最大值(毫秒)"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:391
+msgid "Longest hook flash still recognised as a flash."
+msgstr "仍能被识别为拍叉的最长间隔。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:397
+msgid "Hanging reminder tone timer (s)"
+msgstr "催挂音时间(秒)"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:398
+msgid "How long the on-hook reminder tone plays before the call is released."
+msgstr "催挂音持续播放多久后释放呼叫。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:403
+msgid "Busy tone timer (s)"
+msgstr "忙音时间(秒)"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:404
+msgid "How long the busy tone plays before the call is released."
+msgstr "忙音持续播放多久后释放呼叫。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:409
+msgid "No answer timer (s)"
+msgstr "久叫不应时间(秒)"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:410
+msgid "How long an unanswered call rings before it is released."
+msgstr "无应答的呼叫振铃多久后被释放。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:415
+msgid "Codec negotiation rule"
+msgstr "Codec 协商规则"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:416
+msgid ""
+"Stored for reference; the current backend uses the codec priority order."
+msgstr "仅保存参考；当前后端按编码优先级顺序协商。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:418
+msgid "Remote first"
+msgstr "远端优先"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:419
+msgid "Local first"
+msgstr "本地优先"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:422
+msgid "Fax codec"
+msgstr "传真编码方式"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:423
+msgid "G.711 passthrough is supported; T.38 is stored but not implemented."
+msgstr "支持 G.711 透传；T.38 仅保存，尚未实现。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:425
+msgid "T.38"
+msgstr "T.38"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:426
+msgid "G.711"
+msgstr "G.711"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:429
+msgid "Fax negotiation mode"
+msgstr "传真协商模式"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:430
+msgid "How the fax call is negotiated when the G.711 codec is used."
+msgstr "使用 G.711 编码时传真呼叫的协商方式。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:432
+msgid "T.30 full control"
+msgstr "T.30 全控"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:433
+msgid "T.30 auto negotiation"
+msgstr "T.30 自协商"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:437
+msgid "Synchronize the phone clock"
+msgstr "同步话机时间"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:438
+msgid "Send the gateway time to the connected phone."
+msgstr "把网关时间下发给所连接的话机。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:442
+msgid "Transmit gain (dB)"
+msgstr "呼出增益(dB)"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:443
+msgid "Gain applied to the audio sent towards the network."
+msgstr "发往网络方向的音频增益。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:448
+msgid "Receive gain (dB)"
+msgstr "呼入增益(dB)"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:449
+msgid "Gain applied to the audio received from the network."
+msgstr "来自网络方向的音频增益。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:454
+msgid "Enable echo cancellation"
+msgstr "开启回声抑制"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:455
+msgid ""
+"OSLEC line echo canceller in the AN7581 PCM path (16 ms tail). Disable if it "
+"makes audio worse."
+msgstr ""
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:463
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:41
+msgid "SIP"
+msgstr "SIP"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:464
+msgid ""
+"Session Initiation Protocol settings used with the softswitch and IMS SIP "
+"voice protocols."
+msgstr "软交换 SIP 与 IMS SIP 语音协议使用的 SIP 参数。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:467
+msgid "Authentication"
+msgstr "认证"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:468
+msgid "Servers"
+msgstr "服务器"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:469
+msgid "Standby servers"
+msgstr "备用服务器"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:470
+msgid "Advanced settings"
+msgstr "高级配置"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:471
+msgid "Heartbeat"
+msgstr "心跳"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:477
+msgid "SIP voice protocol"
+msgstr "SIP 语音协议"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:478
+msgid "Softswitch and IMS SIP signalling parameters."
+msgstr "软交换与 IMS 的 SIP 信令参数。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:481
+msgid "Authentication user name"
+msgstr "鉴权用户名"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:482
+msgid "User name the FXS port authenticates with."
+msgstr "该 FXS 端口用于鉴权的用户名。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:486
+msgid "Authentication password"
+msgstr "鉴权密码"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:491
+msgid "Phone number"
+msgstr "电话号码"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:492
+msgid "Number presented to the called party."
+msgstr "呈现给被叫方的号码。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:495
+msgid "Register with the SIP server"
+msgstr "向 SIP 服务器注册"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:499
+msgid "Proxy server"
+msgstr "代理服务器"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:500
+msgid "Address of the SIP proxy, an IP address or a domain name."
+msgstr "SIP 代理服务器地址，可以是 IP 地址或域名。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:501
+msgid "Proxy server port"
+msgstr "代理服务器端口"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:502
+msgid "Proxy server transport"
+msgstr "代理服务器承载协议"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:504
+msgid "Registrar server"
+msgstr "注册服务器"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:505
+msgid "Address of the SIP registrar, an IP address or a domain name."
+msgstr "SIP 注册服务器地址，可以是 IP 地址或域名。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:506
+msgid "Registrar server port"
+msgstr "注册服务器端口"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:507
+msgid "Registrar server transport"
+msgstr "注册服务器承载协议"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:509
+msgid "Outbound proxy server"
+msgstr "出局代理服务器"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:510
+msgid ""
+"Address of the outbound proxy. Leave empty to send requests straight to the "
+"proxy server."
+msgstr "出向代理服务器地址。留空则把请求直接发给代理服务器。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:511
+msgid "Outbound proxy port"
+msgstr "出局代理端口"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:513
+msgid "Standby proxy server"
+msgstr "备用代理服务器"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:514
+msgid "Address used when the SIP proxy cannot be reached."
+msgstr "SIP 代理服务器不可达时使用的地址。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:515
+msgid "Standby proxy server port"
+msgstr "备用代理服务器端口"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:516
+msgid "Standby proxy server transport"
+msgstr "备用代理服务器承载协议"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:518
+msgid "Standby registrar server"
+msgstr "备用注册服务器"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:519
+msgid "Address used when the SIP registrar cannot be reached."
+msgstr "SIP 注册服务器不可达时使用的地址。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:520
+msgid "Standby registrar server port"
+msgstr "备用注册服务器端口"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:521
+msgid "Standby registrar server transport"
+msgstr "备用注册服务器承载协议"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:523
+msgid "Standby outbound proxy server"
+msgstr "备用出局代理服务器"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:524
+msgid ""
+"Address of the outbound proxy used when the primary one cannot be reached."
+msgstr "主用出向代理不可达时使用的出向代理地址。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:525
+msgid "Standby outbound proxy port"
+msgstr "备用出局代理端口"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:527
+msgid "Signalling DSCP"
+msgstr "信令 DSCP"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:528
+msgid "DSCP mark of the SIP signalling packets."
+msgstr "SIP 信令报文的 DSCP 标记。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:533
+msgid "Media DSCP"
+msgstr "媒体 DSCP"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:534
+msgid "DSCP mark of the voice packets."
+msgstr "语音报文的 DSCP 标记。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:539
+msgid "Registration period (s)"
+msgstr "注册周期(秒)"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:540
+msgid "How often the gateway registers again."
+msgstr "网关重新注册的时间间隔。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:545
+msgid "Registration retry period (s)"
+msgstr "注册重试周期(秒)"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:546
+msgid "How soon a failed registration is retried."
+msgstr "注册失败后隔多久重试。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:551
+msgid "Session update period (min)"
+msgstr "会话更新周期(分钟)"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:552
+msgid "How often an established call refreshes its session."
+msgstr "已建立的呼叫刷新会话的时间间隔。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:557
+msgid "Minimum session update period (min)"
+msgstr "最小会话更新周期(分钟)"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:558
+msgid "Shortest session refresh interval accepted from the server."
+msgstr "接受服务器下发的最小会话刷新间隔。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:563
+msgid "Enable heartbeat"
+msgstr "启用心跳"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:564
+msgid "Detect whether the server is still reachable while no call is up."
+msgstr "在没有通话时检测服务器是否仍然可达。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:568
+msgid "Heartbeat period (s)"
+msgstr "心跳周期(秒)"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:573
+msgid "Heartbeat timeout count"
+msgstr "心跳超时次数"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:574
+msgid "Heartbeat timeouts before the registration is refreshed."
+msgstr "触发重新注册前允许的心跳超时次数。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:579
+msgid "Heartbeat mode"
+msgstr "心跳模式"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:581
+msgid "Active"
+msgstr "主动"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:582
+msgid "Passive"
+msgstr "被动"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:589
+msgid "Digit map"
+msgstr "数图配置"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:590
+msgid "Number patterns that end dialling and the timers guarding them."
+msgstr "结束拨号的号码模板以及与之配套的定时器。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:594
+msgid "Enable dial plan"
+msgstr "启用拨号计划"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:598
+msgid "Matching mode"
+msgstr "匹配模式"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:599
+msgid "Whether dialling ends at the shortest or the longest matching pattern."
+msgstr "拨号在最短匹配还是最长匹配处结束。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:601
+msgid "Longest match"
+msgstr "最大匹配"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:602
+msgid "Shortest match"
+msgstr "最小匹配"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:605
+msgid "Off-hook without dialling timer (s)"
+msgstr "摘机不拨号时间(秒)"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:606
+msgid ""
+"How long the port waits after going off-hook before it plays the congestion "
+"tone."
+msgstr "摘机后未拨号多久开始播放催挂音。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:611
+msgid "Inter-digit short timer (s)"
+msgstr "拨号短定时器(秒)"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:612
+msgid "Used while the dialled digits can still start more than one pattern."
+msgstr "已拨号码仍可能匹配多个模板时使用。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:617
+msgid "Inter-digit long timer (s)"
+msgstr "拨号长定时器(秒)"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:618
+msgid "Used once the dialled digits can only complete a long number."
+msgstr "已拨号码只能继续组成长号时使用。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:623
+msgid "Dial plan patterns"
+msgstr "拨号模板"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:624
+msgid ""
+"Dialled number patterns separated by a vertical bar. Leave empty to let the "
+"softswitch decide."
+msgstr "以竖线分隔的拨号模板。留空则由软交换决定。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:638
+msgid "Codecs"
+msgstr "编码设置"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:639
+msgid "Codecs offered by the FXS port, ordered by priority."
+msgstr "FXS 端口提供的编码，按优先级排序。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:643
+msgid "Codec"
+msgstr "编码"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:650
+msgid "Packetization period (ms)"
+msgstr "打包时长(毫秒)"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:651
+msgid "Audio milliseconds carried by a single RTP packet."
+msgstr "单个 RTP 报文承载的音频毫秒数。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:658
+msgid "Priority"
+msgstr "优先级"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/config.js:659
+msgid "Lower values are offered first."
+msgstr "数值越小越优先。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:36
+msgid "Enabled"
+msgstr "已启用"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:36
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:59
+msgid "Disabled"
+msgstr "已禁用"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:50
+msgid "SIP dial plan"
+msgstr "SIP 数图拨号"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:51
+msgid "SIP fixed number"
+msgstr "SIP 固定号码"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:52
+msgid "SIP read digits"
+msgstr "SIP 读取号码"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:60
+msgid "Device missing"
+msgstr "设备不存在"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:61
+msgid "No carrier"
+msgstr "无载波"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:62
+msgid "Link up, no IP"
+msgstr "链路已连接，未获取 IP"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:63
+msgid "Up"
+msgstr "已连接"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:70
+msgid "Registered"
+msgstr "已注册"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:71
+msgid "Unregistered"
+msgstr "未注册"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:72
+msgid "Rejected"
+msgstr "认证失败"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:73
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:169
+msgid "Stopped"
+msgstr "已停止"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:74
+msgid "Unreachable"
+msgstr "不可达"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:75
+msgid "Registration disabled"
+msgstr "注册已关闭"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:76
+msgid "Endpoint not loaded"
+msgstr "终端未加载"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:77
+msgid "Asterisk stopped"
+msgstr "Asterisk 未运行"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:78
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:192
+msgid "Not configured"
+msgstr "未配置"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:79
+msgid "Unknown"
+msgstr "未知"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:86
+msgid "On-hook"
+msgstr "挂机"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:87
+msgid "Off-hook"
+msgstr "摘机"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:94
+msgid "Codec path ready"
+msgstr "编解码通道就绪"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:95
+msgid "Idle"
+msgstr "空闲"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:102
+msgid "Asterisk is not running."
+msgstr "Asterisk 未运行。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:104
+msgid "No SIP account configured; fill it in Configuration."
+msgstr "未配置 SIP 账号，请在“配置”页填写。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:106
+msgid "PJSIP endpoint is not loaded; check the Asterisk log."
+msgstr "PJSIP 终端未加载，请查看 Asterisk 日志。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:108
+msgid "Registration is not active; check the server and credentials."
+msgstr "注册未生效，请检查服务器和账号密码。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:117
+msgid "Restart Asterisk"
+msgstr "重启 Asterisk"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:122
+msgid "Refresh"
+msgstr "刷新"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:136
+msgid "restart failed"
+msgstr "重启失败"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:138
+msgid "Asterisk restarted. Reloading..."
+msgstr "Asterisk 已重启，正在刷新页面……"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:141
+#, javascript-format
+msgid "Asterisk restart failed: %s"
+msgstr "Asterisk 重启失败：%s"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:156
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:221
+msgid ""
+"Show the runtime state of the voice service network, SIP registration and "
+"FXS line."
+msgstr "显示语音业务网络、SIP 注册和 FXS 线路的实时状态。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:159
+msgid "No status available."
+msgstr "暂无状态。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:166
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:181
+msgid "Status"
+msgstr "状态"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:167
+msgid "Protocol"
+msgstr "协议"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:169
+msgid "Asterisk"
+msgstr "Asterisk"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:169
+msgid "Running"
+msgstr "运行中"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:170
+msgid "Active calls"
+msgstr "活动通话"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:174
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:208
+msgid "Note"
+msgstr "提示"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:174
+msgid "Voice service is disabled."
+msgstr "语音业务已禁用。"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:216
+msgid "Exists"
+msgstr "存在"
+
+msgid "Missing"
+msgstr "缺失"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:182
+msgid "VLAN"
+msgstr "VLAN"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:183
+msgid "Device"
+msgstr "设备"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:184
+msgid "Link"
+msgstr "链路"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:185
+msgid "IPv4 address"
+msgstr "IPv4 地址"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:187
+msgid "MAC"
+msgstr "MAC"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:188
+msgid "Policy rule"
+msgstr "策略路由"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:192
+msgid "SIP account"
+msgstr "SIP 账号"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:178
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:192
+msgid "Configured"
+msgstr "已配置"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:193
+msgid "Registrar"
+msgstr "注册服务器"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:194
+msgid "Proxy"
+msgstr "代理服务器"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:195
+msgid "Transport"
+msgstr "传输"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:196
+msgid "Registration"
+msgstr "注册状态"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:197
+msgid "Endpoint"
+msgstr "终端"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:197
+msgid "Loaded"
+msgstr "已加载"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:198
+msgid "Not loaded"
+msgstr "未加载"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:202
+msgid "Registration detail"
+msgstr "注册详情"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:211
+msgid "FXS device"
+msgstr "FXS 设备"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:212
+msgid "PCM channel"
+msgstr "PCM 通道"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:213
+msgid "Terminal ID"
+msgstr "终端 ID"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:214
+msgid "Hook"
+msgstr "摘挂机"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:215
+msgid "SLIC state"
+msgstr "SLIC 状态"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:216
+msgid "PCM device"
+msgstr "PCM 设备"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:224
+msgid "SIP / PJSIP"
+msgstr "SIP / PJSIP"
+
+#: package/luci-app-voice/htdocs/luci-static/resources/view/voice/status.js:225
+msgid "FXS line"
+msgstr "FXS 线路"
+
+#: package/luci-app-voice/root/usr/share/luci/menu.d/luci-app-voice.json
+msgid "Configuration"
+msgstr "配置"
+
+#: package/luci-app-voice/root/usr/share/luci/menu.d/luci-app-voice.json
+msgid "Voice"
+msgstr "语音"

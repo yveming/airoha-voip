@@ -1,0 +1,5 @@
+OSLEC (Open Source Line Echo Canceller) from SpanDSP, GPL-2.0.
+
+Files copied from the airoha_voip vendor tree used by
+asterisk-chan-en75xx, where the same PCM block already runs OSLEC.
+They are compiled into an7581-pcm.ko; no userspace library is needed.

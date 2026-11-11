@@ -1,0 +1,20 @@
+#!/bin/sh
+# Keep the panel phone LED on while the SIP line is registered.
+LED=
+
+while [ -z "$LED" ]; do
+    for l in /sys/class/leds/blue:phone/brightness /sys/class/leds/*:phone/brightness; do
+        [ -e "$l" ] && { LED="$l"; break; }
+    done
+    [ -n "$LED" ] || sleep 5
+done
+
+while true; do
+    if asterisk -rx 'pjsip show registrations' 2>/dev/null | \
+       grep -q 'provider-reg.*Registered'; then
+        echo 1 > "$LED" 2>/dev/null
+    else
+        echo 0 > "$LED" 2>/dev/null
+    fi
+    sleep 3
+done

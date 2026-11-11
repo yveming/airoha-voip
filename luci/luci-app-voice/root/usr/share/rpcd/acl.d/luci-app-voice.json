@@ -1,0 +1,21 @@
+{
+	"luci-app-voice": {
+		"description": "Grant access to voice/SIP configuration and status",
+		"read": {
+			"uci": [ "voice", "network", "iptv" ],
+			"ubus": {
+				"network.device": [ "status" ],
+				"network.interface": [ "dump", "status" ]
+			},
+			"file": {
+				"/usr/libexec/voice-apply *": [ "exec" ]
+			}
+		},
+		"write": {
+			"uci": [ "voice" ],
+			"file": {
+				"/usr/libexec/voice-apply *": [ "exec" ]
+			}
+		}
+	}
+}

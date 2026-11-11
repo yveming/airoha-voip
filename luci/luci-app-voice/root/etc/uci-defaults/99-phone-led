@@ -1,0 +1,5 @@
+#!/bin/sh
+[ -x /etc/init.d/phone-led ] || exit 0
+/etc/init.d/phone-led enable
+/etc/init.d/phone-led restart
+exit 0
