@@ -23,6 +23,13 @@ echo 'src-git airoha_voice https://github.com/yveming/airoha-voice.git' >> feeds
 The current code keeps the `an7581`/`Le9641` names and `/dev/an7581-*` device
 paths.  A chip-independent HAL is intentionally not part of this first split.
 
+## Documentation
+
+- `docs/an7581-voice.md` — register-level AN7581/Le9641 bring-up
+- `docs/an7581-voice-audio-sip.md` — working PCM/ZSI/Asterisk image
+- `docs/voice-pitfalls.md` — symptom/cause/fix log for the difficult bugs
+- `docs/voice-packaging.md` — feed layout, thin packages, device profile, seed
+
 ## Requirements
 
 - OpenWrt/ImmortalWrt with the `airoha/an7581` target
