@@ -716,19 +716,21 @@ asterisk -rx 'pjsip show registrations'
 and writes `/sys/class/leds/blue:phone/brightness` when `provider-reg`
 is `Registered`.  It does not depend on any WAN interface name.
 
-`chan_an7581` now logs, at verbose level 3:
+`chan_an7581` logs one confirmed custom digit at verbose level 3:
 
 ```text
-AN7581: start_audio fd=... dsp=... thread=...
-AN7581: DTMF dbg row=N energy col=N energy ratio=...
-AN7581: RX peak N
-AN7581: DTMF begin 'x'
-AN7581: DTMF end 'x'
+AN7581: DTMF custom 'x'
 ```
 
-These distinguish a missing `ast_dsp_new()` allocation, a DTMF tone
-that is present but not classified, and a begin event without an end
-event.
+The per-frame `DTMF cand` diagnostics were removed after the Goertzel
+detector was stabilised; `start_audio` is only logged at debug level 3.
+The detector runs only while `collecting` is set, so carrier progress
+tones after `Dial()` are not reported as digits.
+
+A user hearing their own voice in the handset is hearing the analogue
+phone's sidetone or acoustic coupling, not the line echo OSLEC removes.
+OSLEC only cancels the far-end signal reflected by the 2-wire hybrid;
+toggling `lec_enable` therefore has no effect on sidetone.
 
 ## 2026-11-10 cleanup build
 
