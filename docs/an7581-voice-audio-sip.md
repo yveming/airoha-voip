@@ -256,7 +256,7 @@ The image was built offline and is **not flashed**.  It includes
 above.  The archive copy is under:
 
 ```text
-~/HG5582A-archive/an7581-voice-2026-11-09/working-audio/
+HG5582A-archive/an7581-voice-2026-11-09/working-audio/
 ```
 
 This is still the voice-debug profile without the Rust PON userspace.  Do
