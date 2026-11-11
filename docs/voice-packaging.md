@@ -102,11 +102,3 @@ do
   apk info -e "$p" >/dev/null 2>&1 || echo "MISS $p"
 done
 ```
-
-## Stale crypto modules
-
-The voice seed must not select the OpenVPN DCO crypto set.  In particular
-`kmod-crypto-chacha20poly1305`, `kmod-crypto-lib-chacha20`,
-`kmod-crypto-lib-poly1305`, `kmod-crypto-aead`, `kmod-crypto-manager`,
-`kmod-crypto-null` and `kmod-crypto-kpp` must not be `=y`.  `kmod-polynomial`
-is unrelated: it is a dependency of `kmod-phy-maxlinear` (GPY211).

@@ -264,7 +264,7 @@ not flash it over the live PON link; use a maintenance window or build a
 combined PON+voice production image first.
 
 
-## Combined PON + IPTV + voice image (2026-11-09)
+## Combined PON + voice image (2026-11-09)
 
 The voice profile no longer omits the PON userspace.  The image now contains:
 
@@ -272,63 +272,9 @@ The voice profile no longer omits the PON userspace.  The image now contains:
 - Source PON userspace: `airoha-ponctl`, `airoha-pond` (built from the
   `airoha-pon-daemons` source package), `luci-app-pon`,
   `luci-i18n-pon-zh-cn` and `airoha-pon-debug` (the diagnostic collector,
-  including `/usr/sbin/pon-debug`).  The temporary `pon-prebuilt` package was
-  removed.
-  Rust has been built successfully in the voice tree, so the temporary
-  `pon-prebuilt` binary package was removed.
-- `kmod-iptv`, `luci-app-iptv` and `luci-i18n-iptv-zh-cn`
+  including `/usr/sbin/pon-debug`).  The temporary `pon-prebuilt` binary
+  package was removed; Rust is built from source in the voice tree.
 - `chan_an7581`, the Asterisk voice applications and `luci-app-voice`
-
-IPTV uses the new single-device kernel interface.  The IPTV kernel module
-creates one untagged device (`itv`) on `pon0`, carries the service and
-multicast VLANs, and the network stack runs DHCP/omcproxy on top of it.
-The relevant UCI configuration is:
-
-```uci
-config iptv 'config'
-	option enabled '1'
-	option uplink 'pon0'
-	option name 'itv'
-	option service_vid '43'
-	option mcast_vid '3990'
-	option macaddr ''
-```
-
-`/etc/config/network` must contain an `iptv` interface over `itv`:
-
-```uci
-config interface 'iptv'
-	option device 'itv'
-	option proto 'dhcp'
-	option force_link '1'
-	option delegate '0'
-	option metric '2000'
-	option iptv_managed '1'
-	option vendorid 'SCITV'
-	option ip4table '102'
-	option auto '1'
-```
-
-`omcproxy` uses `iptv` as its uplink and `lan` as its downlink.  The
-firewall zone `wan` includes the `iptv` network, and the multicast rules
-accept UDP traffic to `239.0.0.0/8`.  VLAN 43/3990 are the China Telecom
-values used by this line; other operators must change `service_vid` and
-`mcast_vid` in LuCI under **Services → IPTV**.
-
-### IPTV bring-up check
-
-```sh
-lsmod | grep iptv
-ip -d link show itv
-cat /sys/class/net/itv/vids          # expect: 43 3990
-ifstatus iptv                        # expect: up after PON carrier
-logread -e iptv | tail -20
-ps | grep '[o]mcproxy'
-```
-
-The `itv` device can be created while `pon0` has no carrier (as on the
-bench).  DHCP on `iptv` only completes after the ONU is registered on the
-PON line.
 
 ### Voice bring-up check
 
@@ -347,11 +293,9 @@ to SIP when the credentials are available.
 
 ### Bench state at the time of writing
 
-`itv@pon0` was created successfully with VLANs `43 3990`, the MAC address
-was applied, and `netifd` started DHCP.  `pon0` is `NO-CARRIER` because the
-HG5582A is not connected to the optical line.  The live-line test still
-needs the device connected and the IPTV/voice checks above repeated.
-
+`pon0` is `NO-CARRIER` because the HG5582A is not connected to the optical
+line.  The live-line test still needs the device connected and the voice
+checks above repeated.
 
 ### Combined image built and flashed (2026-11-09)
 
@@ -366,16 +310,12 @@ The image was flashed with `sysupgrade` while the HG5582A was off the PON
 line; `/etc/config` was preserved.  After the reboot the following were
 verified:
 
-- `luci-app-voice`, `airoha-ponctl`, `airoha-pond`, `airoha-pon-debug`, `luci-app-pon`, `kmod-iptv`, `luci-app-iptv`,
-  `luci-i18n-iptv-zh-cn`, `kmod-airoha-xpon`, `asterisk-chan-an7581` and
+- `luci-app-voice`, `airoha-ponctl`, `airoha-pond`, `airoha-pon-debug`,
+  `luci-app-pon`, `kmod-airoha-xpon`, `asterisk-chan-an7581` and
   `asterisk` are installed.
 - `airoha-pond` is running (`wait-optical-signal`).
-- `itv@pon0` exists with VLANs `43 3990`; DHCP on `iptv` is waiting for
-  the PON carrier.
 - Asterisk is running, `chan_an7581.so` is loaded, PJSIP is bound to
   `0.0.0.0:5060`, and `from-analog` is in Echo mode.
-- `omcproxy` is enabled; it starts when the `iptv` interface obtains an
-  address (the `itv` device exists before the PON carrier is present).
 
 PON mode note: the preserved `/etc/config/pon` selects `epon-10g-1g`.
 The previous image reported `active_mode=xgpon` with `mode_pending=1`;
@@ -383,7 +323,6 @@ the new image applied the configured `epon-10g-1g` at boot.  Confirm the
 live line is 10G EPON before connecting.  If it is XG-PON, set
 `pon.line0.mode='xgpon'` in LuCI → PON (or with `uci`) and restart the
 `pon`/`airoha-pond` services before the live test.
-
 
 ### Live-line test checklist (10G-EPON confirmed)
 
@@ -399,25 +338,7 @@ The line is 10G-EPON, so keep `pon.line0.mode='epon-10g-1g'`.
    Expected after registration: `optical_signal: 1`, `pcs_sync: 1`,
    `llid_valid: 1`, and `mpcp_state: registered`.
 
-3. Check IPTV:
-
-   ```sh
-   ifstatus iptv | head -20
-   ps | grep '[o]mcproxy'
-   logread -e iptv | tail -20
-   ```
-
-   Expected: `iptv` is `up` with a DHCP address, `omcproxy` is running,
-   and `itv` still reports VLANs `43 3990`.
-
-4. Check the TV: the STB should receive its DHCP lease through `itv` and
-   multicast playback should work.  If `omcproxy` did not start, run:
-
-   ```sh
-   /etc/init.d/omcproxy restart
-   ```
-
-5. Check voice:
+3. Check voice:
 
    ```sh
    asterisk -rx 'module show like chan_an7581'
@@ -456,11 +377,9 @@ config codec '...'        G.711A/U, G.722, G.729
   4, terminal ID `AN7581/<line_name>`) lives on the Status page, not in
   Configuration.
 - The device name is `voice.network.name`, default `voice`, and is editable on
-  the page just like the IPTV page's device name (`itv` by default).  The
-  logical interface stays `voice`; changing the device name only renames the
-  8021q VLAN device and updates the interface's `device` reference.  Both
-  `voice` and the IPTV `itv` default are configurable, so the two pages follow
-  the same model.
+  the page.  The logical interface stays `voice`; changing the device name
+  only renames the 8021q VLAN device and updates the interface's `device`
+  reference.
 - Enabling the voice network with the VLAN of the legacy `network.voip`
   interface takes over that interface: the backend removes `network.voip`
   and its `pon0.<vid>` device, copies its MAC into `voice.network.macaddr`,
@@ -587,8 +506,7 @@ network card.
   needs one hard refresh.
 
 The voice VLAN device name is `voice.network.name` and defaults to `voice`.
-It is editable, and the logical interface remains `voice`.  This mirrors the
-IPTV page, whose device name defaults to `itv` and is also editable.
+It is editable, and the logical interface remains `voice`.
 
 ### Voice UI image (2026-11-10)
 
@@ -738,9 +656,7 @@ The dead-code/config cleanup keeps the standby and digit-map fields for the
 next feature round, removes the redundant home-domain field, imports
 `echo_cancellation` into the PCM module parameter, wires `no_answer_timer`
 into the inbound Dial timeout, fixes digit-map pattern validation so
-that a non-empty digit map actually generates outbound extensions, and drops
-the stale OpenVPN DCO crypto module set from all device seeds.  `polynomial.ko`
-remains because it belongs to the MaxLinear GPY211 PHY driver.  The status
+that a non-empty digit map actually generates outbound extensions.  The status
 page no longer reuses the ambiguous `Present` msgid (luci-base translates it
 as "已连接"); policy-rule and PCM-device states now use `Configured` and
 `Exists`.  Menu titles `Voice` and `Configuration` are kept in `voice.po` so

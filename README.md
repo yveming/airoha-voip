@@ -40,4 +40,4 @@ paths.  A chip-independent HAL is intentionally not part of this first split.
 ## Thin packaging
 
 `openwrt-pon-feed` carries the thin Makefiles that fetch this repository by
-`PKG_SOURCE_URL`/`PKG_SOURCE_VERSION`, in the same way as the IPTV packages.
+`PKG_SOURCE_URL`/`PKG_SOURCE_VERSION`.
