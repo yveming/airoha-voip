@@ -7,7 +7,7 @@ directories follow the OpenWrt feed layout, so the repository can also be used
 directly as a feed:
 
 ```sh
-echo 'src-git airoha_voice https://github.com/<org>/airoha-voice.git' >> feeds.conf
+echo 'src-git airoha_voice https://github.com/yveming/airoha-voice.git' >> feeds.conf
 ./scripts/feeds update airoha_voice
 ./scripts/feeds install -a -p airoha_voice
 ```
