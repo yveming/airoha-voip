@@ -30,6 +30,14 @@ paths.  A chip-independent HAL is intentionally not part of this first split.
 - `docs/voice-pitfalls.md` — symptom/cause/fix log for the difficult bugs
 - `docs/voice-packaging.md` — feed layout, thin packages, device profile, seed
 
+## Credits
+
+References:
+
+- [airoha_voip](https://github.com/Sirherobrine23/airoha_voip) — vendor voice API and OSLEC integration reference; Le9641 VP-API/profile data originates from Microsemi/Microchip.
+- OSLEC by Steve Underwood and David Rowe.
+- naoki66's ONU_CONFIG/LuCI voice page for UI inspiration.
+
 ## Requirements
 
 - OpenWrt/ImmortalWrt with the `airoha/an7581` target
