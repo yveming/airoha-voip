@@ -326,7 +326,7 @@ return view.extend({
 		o.depends({ enabled: '1', proto: 'static' });
 
 		o = s.option(form.Value, 'ip4table', _('Policy routing table'),
-			_('Linux routing table used by the VoIP interface. Default: 101. Choose an unused table.'));
+			_('Routing table used by the voice interface. Range: 1-252. Default: 101. Choose an unused table.'));
 		o.default = '101';
 		o.datatype = 'range(1,252)';
 		o.rmempty = false;

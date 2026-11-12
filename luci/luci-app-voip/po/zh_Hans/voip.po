@@ -992,9 +992,9 @@ msgstr "VoIP VLAN 的网关，用于策略路由表的默认路由。"
 msgid "Policy routing table"
 msgstr "策略路由表"
 
-#: package/luci-app-voip/htdocs/luci-static/resources/view/voip/config.js:330
-msgid "Linux routing table used by the VoIP interface. Default: 101. Choose an unused table."
-msgstr "VoIP 接口使用的 Linux 路由表，默认 101。请选择未使用的表号。"
+#: package/luci-app-voip/htdocs/luci-static/resources/view/voip/config.js:329
+msgid "Routing table used by the voice interface. Range: 1-252. Default: 101. Choose an unused table."
+msgstr "语音接口使用的路由表，范围 1-252，默认 101。请选择未使用的表号。"
 
 #: package/luci-app-voip/htdocs/luci-static/resources/view/voip/status.js:184
 msgid "Interface"
