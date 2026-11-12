@@ -1,0 +1,21 @@
+{
+	"luci-app-voip": {
+		"description": "Grant access to VoIP/SIP configuration and status",
+		"read": {
+			"uci": [ "voip", "network", "iptv" ],
+			"ubus": {
+				"network.device": [ "status" ],
+				"network.interface": [ "dump", "status" ]
+			},
+			"file": {
+				"/usr/libexec/voip-apply *": [ "exec" ]
+			}
+		},
+		"write": {
+			"uci": [ "voip" ],
+			"file": {
+				"/usr/libexec/voip-apply *": [ "exec" ]
+			}
+		}
+	}
+}

@@ -1,15 +1,15 @@
-# Voice packaging and feed split
+# VoIP packaging and feed split
 
 ## Repository layout
 
-`airoha-voice` is a feed-compatible source repository.  Do not put a
+`airoha-voip` is a feed-compatible source repository.  Do not put a
 top-level `package/` directory in it; OpenWrt feed scanning expects package
 directories directly below the repository root:
 
 ```text
 kernel/an7581-voice/
 net/asterisk-chan-an7581/
-luci/luci-app-voice/
+luci/luci-app-voip/
 ```
 
 ## Thin packages in openwrt-pon-feed
@@ -18,11 +18,11 @@ luci/luci-app-voice/
 
 ```text
 PKG_SOURCE_PROTO:=git
-PKG_SOURCE_URL:=https://github.com/yveming/airoha-voice.git
+PKG_SOURCE_URL:=https://github.com/yveming/airoha-voip.git
 PKG_SOURCE_VERSION:=<full commit>
 PKG_SOURCE_DATE:=YYYY-MM-DD
-PKG_SOURCE_SUBDIR:=airoha-voice-YYYY-MM-DD~<short>
-PKG_SOURCE:=airoha-voice-YYYY-MM-DD~<short>.tar.zst
+PKG_SOURCE_SUBDIR:=airoha-voip-YYYY-MM-DD~<short>
+PKG_SOURCE:=airoha-voip-YYYY-MM-DD~<short>.tar.zst
 PKG_MIRROR_HASH:=<sha256>
 ```
 
@@ -45,10 +45,10 @@ Device/fiberhome_hg5582a
   stock HG5382A U-Boot
 - `05_fiberhome_board_name` restores the real board name
 
-## Required voice packages
+## Required VoIP packages
 
 The device profile and seed must provide the runtime set, either directly
-or through a `voice-meta` package:
+or through a `voip-meta` package:
 
 ```text
 asterisk
@@ -74,12 +74,12 @@ asterisk-sounds
 kmod-an7581-zsi
 kmod-an7581-pcm
 kmod-an7581-slic-le9641
-luci-app-voice
-luci-i18n-voice-zh-cn
+luci-app-voip
+luci-i18n-voip-zh-cn
 ```
 
 `asterisk-pjsip` and `asterisk-res-pjproject` are pulled by
-`luci-app-voice`, so they may not appear in the seed/profile even though
+`luci-app-voip`, so they may not appear in the seed/profile even though
 they are installed.
 
 ## Verification
@@ -88,7 +88,7 @@ Check the per-device APK database, not only the seed:
 
 ```sh
 T=build_dir/target-aarch64_cortex-a53_musl/linux-airoha_an7581/target-dir-*
-grep -E '^P:(asterisk|kmod-an7581|luci-app-voice|luci-i18n-voice)' \
+grep -E '^P:(asterisk|kmod-an7581|luci-app-voip|luci-i18n-voip)' \
   "$T/lib/apk/db/installed"
 ```
 
@@ -97,7 +97,7 @@ On a running device:
 ```sh
 for p in asterisk asterisk-chan-an7581 asterisk-pjsip \
   kmod-an7581-zsi kmod-an7581-pcm kmod-an7581-slic-le9641 \
-  luci-app-voice luci-i18n-voice-zh-cn
+  luci-app-voip luci-i18n-voip-zh-cn
 do
   apk info -e "$p" >/dev/null 2>&1 || echo "MISS $p"
 done

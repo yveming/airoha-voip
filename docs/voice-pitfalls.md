@@ -135,7 +135,7 @@ working image and interfaces are described in `an7581-voice-audio-sip.md`.
 - Symptom: status shows `策略路由 已连接`, or the top-level menu shows
   `Voice` instead of `语音`.
 - Cause: `Present` is translated by `luci-base` as `已连接`; regenerating
-  `voice.po` from only the JS files dropped the `menu.d` titles.
+  `voip.po` from only the JS files dropped the `menu.d` titles.
 - Fix: use `Configured`/`Exists` for status values; keep `Voice` and
-  `Configuration` in `voice.po`.
+  `Configuration` in `voip.po`.
 - Verify: menu shows `语音`/`配置`; status shows `策略路由 已配置`.

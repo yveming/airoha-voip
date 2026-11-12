@@ -1,15 +1,15 @@
-# airoha-voice
+# airoha-voip
 
-Airoha AN7581 + Le9641 FXS voice stack for OpenWrt.
+Airoha AN7581 + Le9641 VoIP stack for OpenWrt.
 
-This repository is the source tree for the voice packages.  The package
+This repository is the source tree for the VoIP packages.  The package
 directories follow the OpenWrt feed layout, so the repository can also be used
 directly as a feed:
 
 ```sh
-echo 'src-git airoha_voice https://github.com/yveming/airoha-voice.git' >> feeds.conf
-./scripts/feeds update airoha_voice
-./scripts/feeds install -a -p airoha_voice
+echo 'src-git airoha_voip https://github.com/yveming/airoha-voip.git' >> feeds.conf
+./scripts/feeds update airoha_voip
+./scripts/feeds install -a -p airoha_voip
 ```
 
 ## Packages
@@ -18,7 +18,7 @@ echo 'src-git airoha_voice https://github.com/yveming/airoha-voice.git' >> feeds
 | --- | --- | --- |
 | `kernel/an7581-voice/` | `kmod-an7581-zsi`, `kmod-an7581-pcm`, `kmod-an7581-slic-le9641` | AN7581 PCM/ZSI and Le9641 SLIC backends |
 | `net/asterisk-chan-an7581/` | `asterisk-chan-an7581` | Asterisk FXS channel driver |
-| `luci/luci-app-voice/` | `luci-app-voice` | LuCI voice configuration, `voice-apply` and `phone-led` |
+| `luci/luci-app-voip/` | `luci-app-voip` | LuCI VoIP configuration, `voip-apply` and `phone-led` |
 
 The current code keeps the `an7581`/`Le9641` names and `/dev/an7581-*` device
 paths.  A chip-independent HAL is intentionally not part of this first split.

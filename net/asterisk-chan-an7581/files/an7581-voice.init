@@ -1,6 +1,6 @@
 #!/bin/sh /etc/rc.common
 
-# Load the AN7581 voice modules before /etc/init.d/voice (S18) applies the
+# Load the AN7581 voice modules before /etc/init.d/voip (S18) applies the
 # configuration and before Asterisk (S99) starts.
 START=17
 

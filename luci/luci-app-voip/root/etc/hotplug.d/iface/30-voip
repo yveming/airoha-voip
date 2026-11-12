@@ -1,0 +1,15 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+
+iface=$(uci -q get voip.network.interface)
+[ -n "$iface" ] || iface=voip
+[ "$INTERFACE" = "$iface" ] || exit 0
+
+case "$ACTION" in
+	ifup|ifupdate)
+		/usr/libexec/voip-apply hotplug up
+		;;
+	ifdown)
+		/usr/libexec/voip-apply hotplug down
+		;;
+esac

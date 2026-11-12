@@ -124,7 +124,7 @@ static void apply_gain(int16_t *samples, size_t count, int32_t gain_q15)
 /*
  * OSLEC lives in an7581-pcm, so the channel driver hands the configured
  * value to the module parameter.  This keeps an Asterisk-only restart in
- * sync with an7581.conf; voice-apply still writes the same sysfs file
+ * sync with an7581.conf; voip-apply still writes the same sysfs file
  * during boot/apply so the setting also works before Asterisk starts.
  */
 static void apply_echo_cancellation(int enable)

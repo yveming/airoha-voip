@@ -1,0 +1,20 @@
+#!/bin/sh /etc/rc.common
+# SPDX-License-Identifier: Apache-2.0
+
+# Write the generated network/firewall state before netifd starts, and the
+# Asterisk configuration before Asterisk starts.  The hotplug script rebuilds
+# the PJSIP bind address when the VoIP interface gets its DHCP lease.
+START=18
+USE_PROCD=1
+
+start_service() {
+	/usr/libexec/voip-apply boot
+}
+
+reload_service() {
+	/usr/libexec/voip-apply apply
+}
+
+service_triggers() {
+	procd_add_reload_trigger "voip"
+}

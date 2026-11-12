@@ -274,7 +274,7 @@ The voice profile no longer omits the PON userspace.  The image now contains:
   `luci-i18n-pon-zh-cn` and `airoha-pon-debug` (the diagnostic collector,
   including `/usr/sbin/pon-debug`).  The temporary `pon-prebuilt` binary
   package was removed; Rust is built from source in the voice tree.
-- `chan_an7581`, the Asterisk voice applications and `luci-app-voice`
+- `chan_an7581`, the Asterisk voice applications and `luci-app-voip`
 
 ### Voice bring-up check
 
@@ -283,10 +283,10 @@ asterisk -rx 'module show like chan_an7581'
 asterisk -rx 'pjsip show transports'
 asterisk -rx 'dialplan show from-analog'
 asterisk -rx 'core show channels'
-/usr/libexec/voice-apply status
+/usr/libexec/voip-apply status
 ```
 
-`luci-app-voice` owns `/etc/config/voice` and generates
+`luci-app-voip` owns `/etc/config/voip` and generates
 `/etc/asterisk/pjsip.conf`, `extensions.conf` and `an7581.conf`.  The
 default mode is Echo; fill in the SIP account and switch the off-hook mode
 to SIP when the credentials are available.
@@ -310,7 +310,7 @@ The image was flashed with `sysupgrade` while the HG5582A was off the PON
 line; `/etc/config` was preserved.  After the reboot the following were
 verified:
 
-- `luci-app-voice`, `airoha-ponctl`, `airoha-pond`, `airoha-pon-debug`,
+- `luci-app-voip`, `airoha-ponctl`, `airoha-pond`, `airoha-pon-debug`,
   `luci-app-pon`, `kmod-airoha-xpon`, `asterisk-chan-an7581` and
   `asterisk` are installed.
 - `airoha-pond` is running (`wait-optical-signal`).
@@ -354,12 +354,12 @@ The line is 10G-EPON, so keep `pon.line0.mode='epon-10g-1g'`.
 
 ## ONU_CONFIG-style voice page (first release)
 
-`luci-app-voice` 0.2.0 replaces the small Echo/SIP form with the
+`luci-app-voip` 0.2.0 replaces the small Echo/SIP form with the
 ONU_CONFIG-style vendor page, but keeps the configuration under
-`/etc/config/voice` (not `onu-voice`):
+`/etc/config/voip` (not `onu-voice`):
 
 ```text
-config voice 'config'      protocol / test mode / DTMF / gains / SIP account
+config voip 'config'      protocol / test mode / DTMF / gains / SIP account
 config network 'network'  voice VLAN, route only in this release
 config sip 'sip'          proxy / registrar / outbound / home domain / heartbeat
 config digitmap 'digitmap'
@@ -376,43 +376,45 @@ config codec '...'        G.711A/U, G.722, G.729
 - The read-only hardware identity (`/dev/an7581-slic`, `PCM0` channel 0 slot
   4, terminal ID `AN7581/<line_name>`) lives on the Status page, not in
   Configuration.
-- The device name is `voice.network.name`, default `voice`, and is editable on
-  the page.  The logical interface stays `voice`; changing the device name
-  only renames the 8021q VLAN device and updates the interface's `device`
-  reference.
-- Enabling the voice network with the VLAN of the legacy `network.voip`
+- The VLAN device name is `voip.network.name`, default `voip`, and is editable
+  on the page.  The logical netifd interface name is
+  `voip.network.interface`, also default `voip` and editable.  Changing the
+  device name only renames the 8021q VLAN device; changing the interface name
+  renames the generated `network.<name>` section.
+- Enabling the VoIP network with the VLAN of the legacy `network.voip`
   interface takes over that interface: the backend removes `network.voip`
-  and its `pon0.<vid>` device, copies its MAC into `voice.network.macaddr`,
+  and its `pon0.<vid>` device, copies its MAC into `voip.network.macaddr`,
   and creates:
 
   ```text
-  network.luci_voice_vlan  type=8021q, name=voice, vid=<vlan>
-  network.voice            device=voice, DHCP/static, ip4table=101
+  network.luci_voip_vlan  type=8021q, name=voip, vid=<vlan>
+  network.voip            device=voip, DHCP/static, ip4table=101
   ```
 
-  The kernel VLAN device and the UCI logical interface are both named
-  `voice`; this works with netifd and keeps the page/status simple.
-- A `voice` firewall zone with input DROP and explicit SIP (UDP/TCP 5060) and
+  The device and logical interface both default to `voip`; either can be
+  renamed on the page.
+- A `voip` firewall zone with input DROP and explicit SIP (UDP/TCP 5060) and
   RTP (UDP 10000-20000) accept rules is created.
-- `defaultroute` is not set, so netifd's default (1) applies.  The voice
-  default route is installed **into table 101 only**; the customer's main
-  table/default WAN is unaffected.
+- `defaultroute` is not set, so netifd's default (1) applies.  The VoIP
+  default route is installed **into the configured policy table only**
+  (`voip.network.ip4table`, default 101); the customer's main table/default
+  WAN is unaffected.
 - netifd already adds the policy rules for an `ip4table` interface when the
-  address is added; `voice-apply` does **not** add a manual rule.  The rules
-  are:
+  address is added; `voip-apply` does **not** add a manual rule.  With the
+  default table 101 the rules are:
 
   ```text
-  10000: from <voice_ip>/32 lookup 101
-  20000: to <voice_subnet>/<mask> lookup 101
+  10000: from <voip_ip>/32 lookup 101
+  20000: to <voip_subnet>/<mask> lookup 101
   900xx: from all iif lo lookup 101
   ```
 
-  The source rule sends packets sourced from the voice IP to table 101 (which
-  now has the voice default route); the destination rule covers the voice
-  subnet.  A manual `from <voice_ip> lookup 101 priority 30010` rule is
-  redundant and was removed.
-- The `voice` hotplug waits briefly for the address, regenerates PJSIP with
-  `bind=<voice_ip>:5060`, and reloads the PJSIP modules.  If the bind address
+  The source rule sends packets sourced from the VoIP IP to the configured
+  table; the destination rule covers the VoIP subnet.  A manual
+  `from <voip_ip> lookup 101 priority 30010` rule is redundant and was
+  removed.
+- The `voip` hotplug waits briefly for the address, regenerates PJSIP with
+  `bind=<voip_ip>:5060`, and reloads the PJSIP modules.  If the bind address
   changed, Asterisk is restarted because `res_pjsip` cannot reliably rebind an
   existing transport socket; an unchanged address only reloads the modules.
   The source bind is what makes the kernel source rule match; binding to
@@ -445,27 +447,26 @@ config codec '...'        G.711A/U, G.722, G.729
 
 ### First-release behavior
 
-- There is no field migration from the old `/etc/config/voice`
-  (`voice.general`) or from `/etc/config/onu-voice`.  If the new
-  `voice.config.protocol` is absent, `voice-apply` saves the old file as
-  `/etc/config/voice.bak` and starts from the new default.
-- The old `voip` network interface is only removed when the new voice network
-  is enabled with the same VLAN; otherwise it is left untouched.
+- There is no field migration from the old `/etc/config/voice` or from
+  `/etc/config/onu-voice`.  If `/etc/config/voip` is absent, `voip-apply`
+  copies `/usr/share/voip/voip.default`; the old files are left untouched.
+- The legacy `network.voip` interface is only removed when the new VoIP
+  network is enabled with the same VLAN; otherwise it is left untouched.
 - H.248 was removed from this SIP image: the Configuration page no longer
   exposes it, the package default has no `h248` section, and the current
-  board's `voice.h248` was deleted.  Asterisk has no native H.248 MG; an
+  board's `voip.h248` was deleted.  Asterisk has no native H.248 MG; an
   H.248-only line would need a separate MG stack (the vendor stack is
   EN75xx-specific and not usable with the AN7581 drivers).
 
 ### Current bench state after the takeover test
 
 ```text
-voice.network.enabled=1, mode=route, name=voice, vlan=45, proto=dhcp
-voice.network.macaddr=02:00:00:00:00:45   (from the legacy pon0.45)
-network.luci_voice_vlan.name=voice, vid=45
-network.voice.device=voice, ip4table=101
-ifstatus voice: pending DHCP (pon0 has NO-CARRIER)
-firewall.luci_voice_zone: voice zone + SIP/RTP rules
+voip.network.enabled=1, mode=route, name=voip, interface=voip, vlan=45, proto=dhcp
+voip.network.macaddr=02:00:00:00:00:45   (from the legacy pon0.45)
+network.luci_voip_vlan.name=voip, vid=45
+network.voip.device=voip, ip4table=101
+ifstatus voip: pending DHCP (pon0 has NO-CARRIER)
+firewall.luci_voip_zone: voip zone + SIP/RTP rules
 Asterisk: Echo mode, transport-udp 0.0.0.0:5060, no provider yet
 ```
 
@@ -476,7 +477,7 @@ from Echo to a SIP mode when ready.
 
 ### Voice UI pages
 
-`luci-app-voice` now follows the `luci-app-pon` layout:
+`luci-app-voip` now follows the `luci-app-pon` layout:
 
 Both pages start with **Voice service network**, then **Voice service**;
 the status page has no top `h2`/description and starts directly with the
@@ -501,11 +502,11 @@ network card.
   mode/bridge/trunk, no read-only "Voice interface" row, and no status card.
   The two `enabled` switches are both labelled just **Enable** with no
   descriptions.
-- The menu view paths are `voice/status` and `voice/config`.  The old
+- The menu view paths are `voip/status` and `voip/config`.  The old
   `voice/overview` view was removed; a browser that still shows the old page
   needs one hard refresh.
 
-The voice VLAN device name is `voice.network.name` and defaults to `voice`.
+The voice VLAN device name is `voip.network.name` and defaults to `voice`.
 It is editable, and the logical interface remains `voice`.
 
 ### Voice UI image (2026-11-10)
@@ -518,7 +519,7 @@ sha256   b4c0e4742b711817b7937cec51c548ac0d0482ef33dfd7acf383f4b81c21d897
 ```
 
 This was the first split-page image.  Later builds in this document supersede
-it; the running HG5582A also had the `luci-app-voice` and `chan_an7581`
+it; the running HG5582A also had the `luci-app-voip` and `chan_an7581`
 packages installed manually at that point.
 
 
@@ -527,11 +528,11 @@ packages installed manually at that point.
 With a temporary static voice address the netifd behaviour was verified:
 
 ```text
-network.voice.ip4table=101, no defaultroute option (netifd default 1)
+network.voip.ip4table=101, no defaultroute option (netifd default 1)
 
 ip route show table 101:
-default via 192.0.2.1 dev voice proto static metric 2100 linkdown
-192.0.2.0/24 dev voice proto static scope link metric 2100 linkdown
+default via 192.0.2.1 dev voip proto static metric 2100 linkdown
+192.0.2.0/24 dev voip proto static scope link metric 2100 linkdown
 
 ip rule show:
 10000: from 192.0.2.2 lookup 101
@@ -539,15 +540,15 @@ ip rule show:
 900xx: from all iif lo lookup 101
 
 ip route get 8.8.8.8 from 192.0.2.2:
-8.8.8.8 from 192.0.2.2 via 192.0.2.1 dev voice table 101
+8.8.8.8 from 192.0.2.2 via 192.0.2.1 dev voip table 101
 ```
 
 The manual `ip rule` is gone.  PJSIP initially stayed on `0.0.0.0:5060`
 after the address was added; `res_pjsip` could not rebind the existing
-transport.  `voice-apply` now detects a changed `bind=` line and restarts
+transport.  `voip-apply` now detects a changed `bind=` line and restarts
 Asterisk, after which `pjsip show transports` reports
 `192.0.2.2:5060`.  Restoring DHCP with no carrier returns the bind to
-`0.0.0.0:5060` and removes the table-101 rules.
+`0.0.0.0:5060` and removes the configured policy-table rules.
 
 ## 2026-11-10: dial-tone clicks, DTMF masking and line echo
 
@@ -584,16 +585,16 @@ cat /sys/module/an7581_pcm/parameters/lec_enable
 echo 0 > /sys/module/an7581_pcm/parameters/lec_enable   # bypass OSLEC
 ```
 
-`voice.config.echo_cancellation` is written to `an7581.conf`; `chan_an7581`
+`voip.config.echo_cancellation` is written to `an7581.conf`; `chan_an7581`
 imports it into the `an7581_pcm.lec_enable` module parameter when Asterisk
-loads, and `voice-apply` also applies it directly via sysfs.  The init script
+loads, and `voip-apply` also applies it directly via sysfs.  The init script
 gives the `asterisk` group write access to that parameter.
 
 IMS outbound calls now send `P-Preferred-Identity` explicitly from a Dial
 pre-dial handler.  Asterisk's `res_pjsip` only copies the REGISTER
 `P-Associated-URI` to flow (TCP/TLS) transports, so the UDP registration
-needed this.  The phone number is taken from `voice.sip.phone_number`, or
-from the user part of `voice.sip.auth_username` if that field is empty.
+needed this.  The phone number is taken from `voip.sip.phone_number`, or
+from the user part of `voip.sip.auth_username` if that field is empty.
 
 Packages for this round:
 
@@ -602,7 +603,7 @@ kmod-an7581-pcm-6.18.60-r4.apk
 kmod-an7581-slic-le9641-6.18.60-r4.apk
 kmod-an7581-zsi-6.18.60-r4.apk
 asterisk-chan-an7581-11.apk
-luci-app-voice-0.2.0-r10.apk
+luci-app-voip-0.2.0-r10.apk
 ```
 
 ## 2026-11-10 LED map and DTMF diagnostics
@@ -659,7 +660,7 @@ into the inbound Dial timeout, fixes digit-map pattern validation so
 that a non-empty digit map actually generates outbound extensions.  The status
 page no longer reuses the ambiguous `Present` msgid (luci-base translates it
 as "已连接"); policy-rule and PCM-device states now use `Configured` and
-`Exists`.  Menu titles `Voice` and `Configuration` are kept in `voice.po` so
+`Exists`.  Menu titles `Voice` and `Configuration` are kept in `voip.po` so
 the top-level menu stays translated.
 
 ```text
@@ -671,10 +672,10 @@ kmod-an7581-pcm-6.18.60-r4.apk
 kmod-an7581-slic-le9641-6.18.60-r4.apk
 kmod-an7581-zsi-6.18.60-r4.apk
 asterisk-chan-an7581-11.apk
-luci-app-voice-0.2.0-r10.apk
+luci-app-voip-0.2.0-r10.apk
 ```
 
-Existing `/etc/config/voice` files are preserved across sysupgrade.  The old
+Existing `/etc/config/voip` files are preserved across sysupgrade.  The old
 `home_domain*` keys are ignored by the new backend; `match_mode` stays at its
 old value until it is changed in the UI or with `uci set`.  Standby servers
 remain stored but are still not used by the generated PJSIP configuration.
