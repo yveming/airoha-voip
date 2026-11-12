@@ -74,8 +74,8 @@ msgid "Device name"
 msgstr "设备名"
 
 #: package/luci-app-voip/htdocs/luci-static/resources/view/voip/config.js:262
-msgid "Linux name of the voice VLAN device. Default: voice."
-msgstr "语音 VLAN 设备名，默认 voice。"
+msgid "Linux name of the VoIP VLAN device. Default: voip."
+msgstr "VoIP VLAN 设备的 Linux 名称，默认 voip。"
 
 #: package/luci-app-voip/htdocs/luci-static/resources/view/voip/config.js:268
 msgid "VLAN ID"
@@ -971,6 +971,38 @@ msgstr "SIP / PJSIP"
 #: package/luci-app-voip/htdocs/luci-static/resources/view/voip/status.js:225
 msgid "FXS line"
 msgstr "FXS 线路"
+
+#: package/luci-app-voip/htdocs/luci-static/resources/view/voip/config.js:269
+msgid "Interface name"
+msgstr "接口名称"
+
+#: package/luci-app-voip/htdocs/luci-static/resources/view/voip/config.js:270
+msgid "Logical network interface name. Default: voip."
+msgstr "逻辑网络接口名称，默认 voip。"
+
+#: package/luci-app-voip/htdocs/luci-static/resources/view/voip/config.js:274
+msgid "Use letters, digits or underscore, at most 15 characters."
+msgstr "只能使用字母、数字或下划线，最多 15 个字符。"
+
+#: package/luci-app-voip/htdocs/luci-static/resources/view/voip/config.js:315
+msgid "Gateway of the VoIP VLAN, used for the policy routing table default route."
+msgstr "VoIP VLAN 的网关，用于策略路由表的默认路由。"
+
+#: package/luci-app-voip/htdocs/luci-static/resources/view/voip/config.js:329
+msgid "Policy routing table"
+msgstr "策略路由表"
+
+#: package/luci-app-voip/htdocs/luci-static/resources/view/voip/config.js:330
+msgid "Linux routing table used by the VoIP interface. Default: 101. Choose an unused table."
+msgstr "VoIP 接口使用的 Linux 路由表，默认 101。请选择未使用的表号。"
+
+#: package/luci-app-voip/htdocs/luci-static/resources/view/voip/status.js:184
+msgid "Interface"
+msgstr "接口"
+
+#: package/luci-app-voip/htdocs/luci-static/resources/view/voip/status.js:188
+msgid "Policy table"
+msgstr "策略路由表"
 
 #: package/luci-app-voip/root/usr/share/luci/menu.d/luci-app-voip.json
 msgid "Configuration"
