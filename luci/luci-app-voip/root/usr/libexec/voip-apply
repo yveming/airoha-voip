@@ -72,8 +72,8 @@ ensure_schema() {
         return 0
     fi
 
-    # First release: no field migration.  The old /etc/config/voice is left
-    # untouched; the page and the backend only speak the new format.
+    # No field migration: the page and the backend only speak the voip
+    # schema.
     [ -f "$DEFAULT" ] || fail "missing $DEFAULT"
     cp -f "$DEFAULT" /etc/config/voip
     uci commit voip
@@ -165,11 +165,9 @@ apply_network() {
 
     if [ "$enabled" != "1" ]; then
         uci -q delete network.luci_voip_vlan
-        uci -q delete network.luci_voice_vlan
         for sec in $(uci -q show network | sed -n 's/^network\.\([^.]*\)=interface$/\1/p'); do
             [ "$(uci -q get "network.$sec.luci_voip")" = "1" ] && uci -q delete "network.$sec"
         done
-        [ "$(uci -q get network.voice.luci_voice)" = "1" ] && uci -q delete network.voice
         uci commit network
         return 0
     fi
@@ -227,7 +225,6 @@ apply_network() {
     # VLAN conflict check against the other 8021q devices on the same uplink.
     for sec in $(uci -q show network | sed -n 's/^network\.\([^.]*\)=device$/\1/p'); do
         [ "$sec" = "luci_voip_vlan" ] && continue
-        [ "$sec" = "luci_voice_vlan" ] && continue
         dev_name=$(uci -q get "network.$sec.name")
         [ -n "$dev_name" ] && [ "$dev_name" = "$name" ] && continue
         [ "$dev_name" = "$uplink.$vid" ] && continue
@@ -246,7 +243,6 @@ apply_network() {
     [ -n "$mcast" ] && [ "$vid" = "$mcast" ] && fail "VLAN $vid is the IPTV multicast VLAN"
 
     uci -q delete network.luci_voip_vlan
-    uci -q delete network.luci_voice_vlan
     uci set network.luci_voip_vlan=device
     uci set network.luci_voip_vlan.type=8021q
     uci set network.luci_voip_vlan.ifname="$uplink"
@@ -288,9 +284,6 @@ apply_firewall() {
     iface=$(get network.interface)
     [ -n "$iface" ] || iface=voip
 
-    uci -q delete firewall.luci_voice_zone
-    uci -q delete firewall.luci_voice_sip
-    uci -q delete firewall.luci_voice_rtp
     uci -q delete firewall.luci_voip_zone
     uci -q delete firewall.luci_voip_sip
     uci -q delete firewall.luci_voip_rtp
@@ -871,6 +864,7 @@ status() {
     echo "network_gateway=$net_gw"
     echo "network_mac=$net_mac"
     echo "network_rule=$net_rule"
+    echo "network_table=$net_table"
     echo "sip_configured=$sip_configured"
     echo "sip_register=$sip_register"
     echo "sip_registrar=$sip_registrar"
