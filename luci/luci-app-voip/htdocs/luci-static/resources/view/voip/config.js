@@ -259,7 +259,7 @@ return view.extend({
 		o.depends('enabled', '1');
 
 		o = s.option(form.Value, 'name', _('Device name'),
-			_('Linux name of the VoIP VLAN device. Default: voip.'));
+			_('VoIP device name. Default: voip.'));
 		o.default = 'voip';
 		o.rmempty = false;
 		o.validate = validateIfname;
@@ -284,10 +284,24 @@ return view.extend({
 		o.validate = validateVoiceVlan;
 		o.depends('enabled', '1');
 
+		o = s.option(form.Value, 'priority', _('802.1p priority'),
+			_('VLAN priority for voice traffic. Default: 6.'));
+		o.datatype = 'range(0,7)';
+		o.default = '6';
+		o.rmempty = false;
+		o.depends('enabled', '1');
+
 		o = s.option(form.Value, 'macaddr', _('MAC address'),
 			_('Optional. Override the MAC address of the voice interface.'));
 		o.datatype = 'macaddr';
 		o.rmempty = true;
+		o.depends('enabled', '1');
+
+		o = s.option(form.Value, 'mtu', _('MTU'),
+			_('Voice interface MTU. Default: 1460.'));
+		o.datatype = 'range(576,1500)';
+		o.default = '1460';
+		o.rmempty = false;
 		o.depends('enabled', '1');
 
 		o = s.option(form.ListValue, 'proto', _('IP assignment'),
@@ -470,7 +484,7 @@ return view.extend({
 		o.rmempty = false;
 
 		o = s.option(form.Flag, 'echo_cancellation', _('Enable echo cancellation'),
-			_('OSLEC line echo canceller in the AN7581 PCM path (16 ms tail). Disable if it makes audio worse.'));
+			_('Line echo canceller for the FXS audio path. Disable if it makes audio worse.'));
 		o.default = '1';
 		o.rmempty = false;
 

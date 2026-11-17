@@ -144,7 +144,7 @@ validate_vlan() {
 
 apply_network() {
     local enabled mode uplink name iface table vid proto mac ipaddr netmask gateway dns
-    local sec dev_name type ifname dev_vid service mcast legacy_dev
+    local mtu priority sec dev_name type ifname dev_vid service mcast legacy_dev
 
     enabled=$(get network.enabled)
     mode=$(get network.mode)
@@ -156,6 +156,8 @@ apply_network() {
     table=$(get network.ip4table)
     [ -n "$table" ] || table=101
     vid=$(get network.vlan_id)
+    mtu=$(get network.mtu); [ -n "$mtu" ] || mtu=1460
+    priority=$(get network.priority); [ -n "$priority" ] || priority=6
     proto=$(get network.proto)
     mac=$(get network.macaddr)
     ipaddr=$(get network.ipaddr)
@@ -173,6 +175,10 @@ apply_network() {
     fi
 
     [ "$mode" = "route" ] || fail "only route mode is implemented (got '$mode')"
+    case "$mtu" in ''|*[!0-9]*) mtu=1460 ;; esac
+    [ "$mtu" -ge 576 ] 2>/dev/null && [ "$mtu" -le 1500 ] || mtu=1460
+    case "$priority" in ''|*[!0-9]*) priority=6 ;; esac
+    [ "$priority" -ge 0 ] 2>/dev/null && [ "$priority" -le 7 ] || priority=6
     validate_ifname "${uplink:-pon0}" || fail "invalid voip uplink '${uplink}'"
     validate_ifname "$name" || fail "invalid voip device name '$name'"
     validate_iface_name "$iface" || fail "invalid voip interface name '$iface' (use letters, digits or underscore)"
@@ -258,7 +264,7 @@ apply_network() {
     uci set "network.$iface.force_link=1"
     uci set "network.$iface.delegate=0"
     uci set "network.$iface.metric=2100"
-    uci set "network.$iface.mtu=1460"
+    uci set "network.$iface.mtu=$mtu"
     uci set "network.$iface.ip4table=$table"
     uci set "network.$iface.luci_voip=1"
 
@@ -763,7 +769,7 @@ reload_network() {
 
 status() {
     local service_enabled protocol test_mode asterisk_running active_calls
-    local net_enabled net_mode net_vlan net_dev net_iface net_state net_ip net_gw net_mac net_rule
+    local net_enabled net_mode net_vlan net_mtu net_priority net_dev net_iface net_state net_ip net_gw net_mac net_rule
     local sip_configured sip_register sip_registrar sip_proxy sip_user sip_transport
     local sip_registration sip_registration_detail sip_endpoint
     local fxs_line fxs_hook fxs_state pcm_present fxs_device pcm_channel terminal_id line regline trans_line carrier
@@ -783,6 +789,8 @@ status() {
     net_enabled=$(get network.enabled)
     net_mode=$(get network.mode)
     net_vlan=$(get network.vlan_id)
+    net_mtu=$(get network.mtu); [ -n "$net_mtu" ] || net_mtu=1460
+    net_priority=$(get network.priority); [ -n "$net_priority" ] || net_priority=6
     net_dev=$(voip_dev)
     net_iface=$(get network.interface)
     [ -n "$net_iface" ] || net_iface=voip
@@ -881,6 +889,8 @@ status() {
     echo "network_enabled=$net_enabled"
     echo "network_mode=$net_mode"
     echo "network_vlan=$net_vlan"
+    echo "network_mtu=$net_mtu"
+    echo "network_priority=$net_priority"
     echo "network_device=$net_dev"
     echo "network_interface=$net_iface"
     echo "network_state=$net_state"
@@ -906,13 +916,19 @@ status() {
 }
 
 apply_link_qos() {
-    local name
+    local name mtu priority
 
     name=$(get network.name)
     [ -n "$name" ] || name=voip
-    ip link set dev "$name" mtu 1460 2>/dev/null || true
-    ip link set dev "$name" type vlan egress-qos-map 0:6 2>/dev/null || true
-    log "link qos: $name mtu=1460 egress-qos-map 0:6"
+    mtu=$(get network.mtu); [ -n "$mtu" ] || mtu=1460
+    priority=$(get network.priority); [ -n "$priority" ] || priority=6
+    case "$mtu" in ''|*[!0-9]*) mtu=1460 ;; esac
+    [ "$mtu" -ge 576 ] 2>/dev/null && [ "$mtu" -le 1500 ] || mtu=1460
+    case "$priority" in ''|*[!0-9]*) priority=6 ;; esac
+    [ "$priority" -ge 0 ] 2>/dev/null && [ "$priority" -le 7 ] || priority=6
+    ip link set dev "$name" mtu "$mtu" 2>/dev/null || true
+    ip link set dev "$name" type vlan egress-qos-map 0:"$priority" 2>/dev/null || true
+    log "link qos: $name mtu=$mtu egress-qos-map 0:$priority"
 }
 
 case "${1:-apply}" in

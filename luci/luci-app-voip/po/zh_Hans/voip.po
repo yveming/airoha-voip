@@ -74,8 +74,29 @@ msgid "Device name"
 msgstr "设备名"
 
 #: package/luci-app-voip/htdocs/luci-static/resources/view/voip/config.js:262
-msgid "Linux name of the VoIP VLAN device. Default: voip."
-msgstr "VoIP VLAN 设备的 Linux 名称，默认 voip。"
+msgid "VoIP device name. Default: voip."
+msgstr "VoIP 设备名称，默认 voip。"
+
+#: package/luci-app-voip/htdocs/luci-static/resources/view/voip/config.js:280
+msgid "802.1p priority"
+msgstr "802.1p 优先级"
+
+#: package/luci-app-voip/htdocs/luci-static/resources/view/voip/config.js:281
+msgid "VLAN priority for voice traffic. Default: 6."
+msgstr "语音流量的 VLAN 优先级，默认 6。"
+
+#: package/luci-app-voip/htdocs/luci-static/resources/view/voip/config.js:288
+#: package/luci-app-voip/htdocs/luci-static/resources/view/voip/status.js:185
+msgid "MTU"
+msgstr "MTU"
+
+#: package/luci-app-voip/htdocs/luci-static/resources/view/voip/config.js:289
+msgid "Voice interface MTU. Default: 1460."
+msgstr "语音接口 MTU，默认 1460。"
+
+#: package/luci-app-voip/htdocs/luci-static/resources/view/voip/status.js:184
+msgid "802.1p"
+msgstr "802.1p"
 
 #: package/luci-app-voip/htdocs/luci-static/resources/view/voip/config.js:268
 msgid "VLAN ID"
@@ -365,9 +386,8 @@ msgstr "开启回声抑制"
 
 #: package/luci-app-voip/htdocs/luci-static/resources/view/voip/config.js:455
 msgid ""
-"OSLEC line echo canceller in the AN7581 PCM path (16 ms tail). Disable if it "
-"makes audio worse."
-msgstr "AN7581 PCM 路径中的 OSLEC 线路回声消除器（16 ms 尾长）。如果它让音质变差，请关闭。"
+"Line echo canceller for the FXS audio path. Disable if it makes audio worse."
+msgstr "FXS 音频路径的线路回声消除器。如果它让音质变差，请关闭。"
 
 #: package/luci-app-voip/htdocs/luci-static/resources/view/voip/config.js:477
 msgid "Enable static jitter buffer"
