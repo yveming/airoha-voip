@@ -258,6 +258,7 @@ apply_network() {
     uci set "network.$iface.force_link=1"
     uci set "network.$iface.delegate=0"
     uci set "network.$iface.metric=2100"
+    uci set "network.$iface.mtu=1460"
     uci set "network.$iface.ip4table=$table"
     uci set "network.$iface.luci_voip=1"
 
@@ -555,7 +556,7 @@ write_pjsip() {
 write_dialplan() {
     local enabled protocol test_mode line timeout inbound fixed no_answer_timer
     local digitmap_enabled short_timer offhook_timer busy_timer digit_map raw pat
-    local sip_user home_domain ppi_uri dial_opt
+    local sip_user home_domain ppi_uri dial_opt jitter_enabled jitter_ms
 
     enabled=$(get config.enabled)
     protocol=$(get config.protocol)
@@ -570,6 +571,8 @@ write_dialplan() {
     offhook_timer=$(get digitmap.offhook_timer); [ -n "$offhook_timer" ] || offhook_timer=15
     busy_timer=$(get config.busy_tone_timer); [ -n "$busy_timer" ] || busy_timer=40
     digit_map=$(get digitmap.digit_map)
+    jitter_enabled=$(get config.jitter_buffer); [ -n "$jitter_enabled" ] || jitter_enabled=1
+    jitter_ms=$(get config.jitter_buffer_ms); [ -n "$jitter_ms" ] || jitter_ms=50
 
     # IMS expects the UE to send P-Preferred-Identity.  Asterisk only copies
     # the P-Associated-URI from the REGISTER response onto flow (TCP/TLS)
@@ -581,7 +584,9 @@ write_dialplan() {
         ppi_uri="<sip:${sip_user}@${home_domain}\;user=phone>"
     fi
     dial_opt=
-    [ -n "$ppi_uri" ] && dial_opt=",b(voice-ppi^s^1(${ppi_uri}))"
+    if [ "$jitter_enabled" = "1" ] || [ -n "$ppi_uri" ]; then
+        dial_opt=",b(voice-pre^s^1(${ppi_uri}))"
+    fi
 
     [ -f "$EXT" ] && cp -f "$EXT" "$EXT.bak" 2>/dev/null || true
 
@@ -601,12 +606,12 @@ write_dialplan() {
         elif [ "$test_mode" = "sip_fixed" ]; then
             [ -n "$fixed" ] || fixed=1000
             echo "exten => s,1,Answer()"
-            echo " same => n,Dial(PJSIP/$fixed@provider,$timeout)"
+            echo " same => n,Dial(PJSIP/$fixed@provider,$timeout$dial_opt)"
             echo " same => n,Hangup()"
         elif [ "$test_mode" = "sip_read" ]; then
             echo "exten => s,1,Answer()"
             echo " same => n,Read(NUMBER,,20,,,10)"
-            echo " same => n,Dial(PJSIP/\${NUMBER}@provider,$timeout)"
+            echo " same => n,Dial(PJSIP/\${NUMBER}@provider,$timeout$dial_opt)"
             echo " same => n,Hangup()"
         elif [ "$test_mode" = "sip_digitmap" ]; then
             echo "exten => s,1,Answer()"
@@ -646,19 +651,38 @@ write_dialplan() {
         echo
         echo "[from-sip]"
         if [ "$inbound" = "1" ]; then
-            echo "exten => _+X.,1,Dial(AN7581/$line,$no_answer_timer)"
-            echo " same => n,Hangup()"
-            echo "exten => _X.,1,Dial(AN7581/$line,$no_answer_timer)"
-            echo " same => n,Hangup()"
+            if [ "$jitter_enabled" = "1" ]; then
+                echo "exten => _+X.,1,Set(JITTERBUFFER(fixed)=$jitter_ms)"
+                echo " same => n,Dial(AN7581/$line,$no_answer_timer)"
+                echo " same => n,Hangup()"
+                echo "exten => _X.,1,Set(JITTERBUFFER(fixed)=$jitter_ms)"
+                echo " same => n,Dial(AN7581/$line,$no_answer_timer)"
+                echo " same => n,Hangup()"
+            else
+                echo "exten => _+X.,1,Dial(AN7581/$line,$no_answer_timer)"
+                echo " same => n,Hangup()"
+                echo "exten => _X.,1,Dial(AN7581/$line,$no_answer_timer)"
+                echo " same => n,Hangup()"
+            fi
         else
             echo "exten => _+X.,1,Hangup()"
             echo "exten => _X.,1,Hangup()"
         fi
 
         echo
-        echo "[voice-ppi]"
-        echo "exten => s,1,Set(PJSIP_HEADER(add,P-Preferred-Identity)=\${ARG1})"
-        echo " same => n,Return()"
+        echo "[voice-pre]"
+        if [ "$jitter_enabled" = "1" ]; then
+            echo "exten => s,1,Set(JITTERBUFFER(fixed)=$jitter_ms)"
+            echo " same => n,GotoIf(\$[\"\${ARG1}\"=\"\"]?4)"
+            echo " same => n,Set(PJSIP_HEADER(add,P-Preferred-Identity)=\${ARG1})"
+            echo " same => n,Return()"
+            echo " same => n,Return()"
+        else
+            echo "exten => s,1,GotoIf(\$[\"\${ARG1}\"=\"\"]?3)"
+            echo " same => n,Set(PJSIP_HEADER(add,P-Preferred-Identity)=\${ARG1})"
+            echo " same => n,Return()"
+            echo " same => n,Return()"
+        fi
     } > "$EXT"
 }
 
@@ -881,11 +905,22 @@ status() {
     echo "pcm_present=$pcm_present"
 }
 
+apply_link_qos() {
+    local name
+
+    name=$(get network.name)
+    [ -n "$name" ] || name=voip
+    ip link set dev "$name" mtu 1460 2>/dev/null || true
+    ip link set dev "$name" type vlan egress-qos-map 0:6 2>/dev/null || true
+    log "link qos: $name mtu=1460 egress-qos-map 0:6"
+}
+
 case "${1:-apply}" in
     boot)
         acquire_lock
         ensure_schema
         apply_network
+        apply_link_qos
         apply_firewall
         ensure_tone_zone
         write_pjsip
@@ -904,6 +939,7 @@ case "${1:-apply}" in
         write_an7581
         apply_echo_cancellation
         reload_network
+        apply_link_qos
         if [ "$(get network.enabled)" = 1 ] && wait_voip_ip >/dev/null 2>&1; then
             write_pjsip
         fi
@@ -915,6 +951,7 @@ case "${1:-apply}" in
         ensure_tone_zone
         if [ "${2:-up}" != "down" ]; then
             wait_voip_ip >/dev/null 2>&1 || true
+            apply_link_qos
         fi
         write_pjsip
         reload_asterisk
@@ -926,6 +963,7 @@ case "${1:-apply}" in
         ensure_tone_zone
         write_pjsip
         apply_echo_cancellation
+        apply_link_qos
         /etc/init.d/asterisk restart >/dev/null 2>&1 || true
         sleep 1
         status

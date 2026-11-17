@@ -402,7 +402,7 @@ return view.extend({
 		o = s.option(form.Value, 'flashhook_min', _('Flash hook minimum (ms)'),
 			_('Shortest hook flash still recognised as a flash.'));
 		o.datatype = 'uinteger';
-		o.placeholder = '90';
+		o.placeholder = '100';
 		o.rmempty = false;
 
 		o = s.option(form.Value, 'flashhook_max', _('Flash hook maximum (ms)'),
@@ -454,7 +454,7 @@ return view.extend({
 
 		o = s.option(form.Flag, 'time_sync', _('Synchronize the phone clock'),
 			_('Send the gateway time to the connected phone.'));
-		o.default = '0';
+		o.default = '1';
 		o.rmempty = false;
 
 		o = s.option(form.Value, 'transmit_gain', _('Transmit gain (dB)'),
@@ -473,6 +473,18 @@ return view.extend({
 			_('OSLEC line echo canceller in the AN7581 PCM path (16 ms tail). Disable if it makes audio worse.'));
 		o.default = '1';
 		o.rmempty = false;
+
+		o = s.option(form.Flag, 'jitter_buffer', _('Enable static jitter buffer'),
+			_('Buffer RTP audio to absorb network jitter. Matches the OEM 50 ms static buffer.'));
+		o.default = '1';
+		o.rmempty = false;
+
+		o = s.option(form.Value, 'jitter_buffer_ms', _('Jitter buffer (ms)'),
+			_('Fixed jitter buffer depth applied to SIP media.'));
+		o.datatype = 'range(10,500)';
+		o.placeholder = '50';
+		o.rmempty = false;
+		o.depends('jitter_buffer', '1');
 
 		/* ---------------------------------------------------------------- *
 		 * SIP                                                              *
@@ -635,7 +647,7 @@ return view.extend({
 		o = s.option(form.Value, 'long_timer', _('Inter-digit long timer (s)'),
 			_('Used once the dialled digits can only complete a long number.'));
 		o.datatype = 'range(1,60)';
-		o.placeholder = '16';
+		o.placeholder = '20';
 		o.rmempty = false;
 
 		o = s.option(form.TextValue, 'digit_map', _('Dial plan patterns'),
