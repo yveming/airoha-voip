@@ -181,12 +181,12 @@ return view.extend({
 			row(_('Status'), enabled(d.network_enabled)),
 			row(_('VLAN'), d.network_vlan || '—'),
 			row(_('Device'), d.network_device || '—'),
+			row(_('MAC'), d.network_mac || '—'),
 			row(_('Interface'), d.network_interface || '—'),
 			row(_('Link'), networkStateName(d.network_state)),
 			row(_('IPv4 address'), d.network_ip || '—'),
 			row(_('Gateway'), d.network_gateway || '—'),
 			row(_('Policy table'), d.network_table || '—'),
-			row(_('MAC'), d.network_mac || '—'),
 			row(_('Policy rule'), rule || '—')
 		];
 

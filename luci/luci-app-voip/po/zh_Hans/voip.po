@@ -367,7 +367,25 @@ msgstr "开启回声抑制"
 msgid ""
 "OSLEC line echo canceller in the AN7581 PCM path (16 ms tail). Disable if it "
 "makes audio worse."
-msgstr ""
+msgstr "AN7581 PCM 路径中的 OSLEC 线路回声消除器（16 ms 尾长）。如果它让音质变差，请关闭。"
+
+#: package/luci-app-voip/htdocs/luci-static/resources/view/voip/config.js:477
+msgid "Enable static jitter buffer"
+msgstr "启用静态抖动缓冲"
+
+#: package/luci-app-voip/htdocs/luci-static/resources/view/voip/config.js:478
+msgid ""
+"Buffer RTP audio to absorb network jitter. Matches the OEM 50 ms static "
+"buffer."
+msgstr "缓冲 RTP 音频以吸收网络抖动，与原厂 50 ms 静态缓冲一致。"
+
+#: package/luci-app-voip/htdocs/luci-static/resources/view/voip/config.js:483
+msgid "Jitter buffer (ms)"
+msgstr "抖动缓冲(ms)"
+
+#: package/luci-app-voip/htdocs/luci-static/resources/view/voip/config.js:484
+msgid "Fixed jitter buffer depth applied to SIP media."
+msgstr "应用于 SIP 媒体的固定抖动缓冲深度。"
 
 #: package/luci-app-voip/htdocs/luci-static/resources/view/voip/config.js:463
 #: package/luci-app-voip/htdocs/luci-static/resources/view/voip/status.js:41
