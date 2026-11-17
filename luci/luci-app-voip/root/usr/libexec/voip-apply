@@ -807,7 +807,9 @@ status() {
         else
             net_mac=$(cat "/sys/class/net/$net_dev/address" 2>/dev/null)
             net_ip=$(ip -4 addr show dev "$net_dev" 2>/dev/null | \
-                awk '/inet / {print $2; exit}' | cut -d/ -f1)
+                awk '/inet / {print $2; exit}')
+            [ -n "$net_ip" ] || net_ip=$(ip -6 addr show dev "$net_dev" scope global 2>/dev/null | \
+                awk '/inet6 / {print $2; exit}')
             carrier=$(cat "/sys/class/net/$net_dev/carrier" 2>/dev/null)
             if [ -n "$net_ip" ]; then
                 net_gw=$(ip route show table "$net_table" 2>/dev/null | \

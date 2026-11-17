@@ -934,7 +934,7 @@ msgid "MAC"
 msgstr "MAC"
 
 #: package/luci-app-voip/htdocs/luci-static/resources/view/voip/status.js:188
-msgid "Policy rule"
+msgid "Policy route"
 msgstr "策略路由"
 
 #: package/luci-app-voip/htdocs/luci-static/resources/view/voip/status.js:192

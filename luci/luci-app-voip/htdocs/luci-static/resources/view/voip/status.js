@@ -178,18 +178,12 @@ return view.extend({
 			rule = d.network_rule === '1' ? _('Configured') : _('Missing');
 
 		var networkRows = [
-			row(_('Status'), enabled(d.network_enabled)),
-			row(_('VLAN'), d.network_vlan || '—'),
-			row(_('802.1p'), d.network_priority || '—'),
 			row(_('Device'), d.network_device || '—'),
-			row(_('MAC'), d.network_mac || '—'),
-			row(_('MTU'), d.network_mtu || '—'),
 			row(_('Interface'), d.network_interface || '—'),
 			row(_('Link'), networkStateName(d.network_state)),
-			row(_('IPv4 address'), d.network_ip || '—'),
+			row(_('IP address'), d.network_ip || '—'),
 			row(_('Gateway'), d.network_gateway || '—'),
-			row(_('Policy table'), d.network_table || '—'),
-			row(_('Policy rule'), rule || '—')
+			row(_('Policy route'), rule || '—')
 		];
 
 		var sipRows = [
