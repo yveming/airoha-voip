@@ -395,9 +395,8 @@ msgstr "启用静态抖动缓冲"
 
 #: package/luci-app-voip/htdocs/luci-static/resources/view/voip/config.js:478
 msgid ""
-"Buffer RTP audio to absorb network jitter. Matches the OEM 50 ms static "
-"buffer."
-msgstr "缓冲 RTP 音频以吸收网络抖动，与原厂 50 ms 静态缓冲一致。"
+"Buffer RTP audio to absorb network jitter, default 50 ms."
+msgstr "缓冲 RTP 音频以吸收网络抖动，默认50 ms。"
 
 #: package/luci-app-voip/htdocs/luci-static/resources/view/voip/config.js:483
 msgid "Jitter buffer (ms)"

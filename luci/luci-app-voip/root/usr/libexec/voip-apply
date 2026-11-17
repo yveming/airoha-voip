@@ -769,7 +769,7 @@ reload_network() {
 
 status() {
     local service_enabled protocol test_mode asterisk_running active_calls
-    local net_enabled net_mode net_vlan net_mtu net_priority net_dev net_iface net_state net_ip net_gw net_mac net_rule
+    local net_enabled net_mode net_vlan net_mtu net_priority net_dev net_iface net_state net_ip net_ip_addr net_gw net_mac net_rule
     local sip_configured sip_register sip_registrar sip_proxy sip_user sip_transport
     local sip_registration sip_registration_detail sip_endpoint
     local fxs_line fxs_hook fxs_state pcm_present fxs_device pcm_channel terminal_id line regline trans_line carrier
@@ -812,9 +812,11 @@ status() {
                 awk '/inet6 / {print $2; exit}')
             carrier=$(cat "/sys/class/net/$net_dev/carrier" 2>/dev/null)
             if [ -n "$net_ip" ]; then
+                net_ip_addr=${net_ip%%/*}
                 net_gw=$(ip route show table "$net_table" 2>/dev/null | \
                     awk '/^default/ {print $3; exit}')
-                ip rule show 2>/dev/null | grep -q "from $net_ip.*lookup $net_table" && \
+                { ip rule show; ip -6 rule show; } 2>/dev/null | \
+                    grep -qE "from ${net_ip_addr}(/[0-9]+)?[[:space:]].*lookup ${net_table}([[:space:]]|$)" && \
                     net_rule=1 || net_rule=0
                 [ "$carrier" = 1 ] && net_state=up || net_state=no-carrier
             else

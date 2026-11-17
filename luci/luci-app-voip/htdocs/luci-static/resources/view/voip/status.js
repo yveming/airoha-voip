@@ -178,7 +178,6 @@ return view.extend({
 			rule = d.network_rule === '1' ? _('Configured') : _('Missing');
 
 		var networkRows = [
-			row(_('Device'), d.network_device || '—'),
 			row(_('Interface'), d.network_interface || '—'),
 			row(_('Link'), networkStateName(d.network_state)),
 			row(_('IP address'), d.network_ip || '—'),

@@ -489,7 +489,7 @@ return view.extend({
 		o.rmempty = false;
 
 		o = s.option(form.Flag, 'jitter_buffer', _('Enable static jitter buffer'),
-			_('Buffer RTP audio to absorb network jitter. Matches the OEM 50 ms static buffer.'));
+			_('Buffer RTP audio to absorb network jitter, default 50 ms.'));
 		o.default = '1';
 		o.rmempty = false;
 
