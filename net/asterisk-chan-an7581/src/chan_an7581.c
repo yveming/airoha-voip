@@ -71,7 +71,6 @@ struct an7581_pvt {
 	int monitor_stop;
 	int hook;
 	int incoming_ringing;
-	int wait_onhook;
 	int tx_gain_q15;
 	int rx_gain_q15;
 	int dialtone_notch_hz;
@@ -531,12 +530,13 @@ static void an7581_start_outgoing(struct an7581_pvt *p)
 	int on = 1;
 
 	ast_mutex_lock(&p->lock);
-	if (p->owner || p->wait_onhook) {
+	if (p->owner) {
 		ast_mutex_unlock(&p->lock);
 		return;
 	}
 	chan = an7581_new(p, AST_STATE_UP, NULL, NULL, p->context, p->exten);
 	if (!chan) {
+		ast_log(LOG_ERROR, "AN7581: cannot allocate outgoing channel\n");
 		ast_mutex_unlock(&p->lock);
 		return;
 	}
@@ -545,13 +545,24 @@ static void an7581_start_outgoing(struct an7581_pvt *p)
 	__atomic_store_n(&p->collecting, 1, __ATOMIC_RELAXED);
 	ast_mutex_unlock(&p->lock);
 
+	ast_debug(3, "AN7581: start outgoing owner=%p hook=%d\n",
+		  chan, p->hook);
 	ioctl(p->ctl_fd, AN7581_SLIC_SET_ACTIVE, &on);
 	if (an7581_start_audio(p)) {
+		ast_log(LOG_ERROR, "AN7581: cannot start audio for outgoing call\n");
+		ast_mutex_lock(&p->lock);
+		if (p->owner == chan)
+			p->owner = NULL;
+		ast_mutex_unlock(&p->lock);
 		ast_hangup(chan);
 		return;
 	}
 	if (ast_pbx_start(chan)) {
 		ast_log(LOG_ERROR, "AN7581: ast_pbx_start failed\n");
+		ast_mutex_lock(&p->lock);
+		if (p->owner == chan)
+			p->owner = NULL;
+		ast_mutex_unlock(&p->lock);
 		ast_hangup(chan);
 	}
 }
@@ -603,17 +614,18 @@ static void *an7581_monitor_thread(void *data)
 				chan = p->owner;
 				ast_channel_ref(chan);
 				p->incoming_ringing = 0;
-			} else if (!p->owner && !p->wait_onhook) {
+			} else if (!p->owner) {
 				outgoing = 1;
 			}
 		} else {
-			p->wait_onhook = 0;
 			if (p->owner) {
 				hangup = 1;
 				chan = p->owner;
 				ast_channel_ref(chan);
 				p->owner = NULL;
 				p->incoming_ringing = 0;
+				__atomic_store_n(&p->dialing, 0, __ATOMIC_RELAXED);
+				__atomic_store_n(&p->collecting, 0, __ATOMIC_RELAXED);
 			}
 		}
 		ast_mutex_unlock(&p->lock);
@@ -676,7 +688,6 @@ static struct ast_channel *an7581_requester(const char *type,
 	}
 	pvt->owner = chan;
 	pvt->incoming_ringing = pvt->hook ? 0 : 1;
-	pvt->wait_onhook = 0;
 	ast_mutex_unlock(&pvt->lock);
 
 	if (pvt->hook) {
@@ -710,6 +721,8 @@ static int an7581_hangup(struct ast_channel *chan)
 
 		ast_mutex_lock(&p->lock);
 		current = (p->owner == chan);
+		ast_debug(3, "AN7581: hangup owner=%p current=%d orphan=%d hook=%d\n",
+			  p->owner, current, orphan, p->hook);
 		if (current || !p->owner) {
 			ioctl(p->ctl_fd, AN7581_SLIC_SET_RING, &off);
 			ioctl(p->ctl_fd, AN7581_SLIC_SET_ACTIVE, &idle);
@@ -717,7 +730,6 @@ static int an7581_hangup(struct ast_channel *chan)
 			__atomic_store_n(&p->dialing, 0, __ATOMIC_RELAXED);
 			__atomic_store_n(&p->collecting, 0, __ATOMIC_RELAXED);
 			p->incoming_ringing = 0;
-			p->wait_onhook = p->hook ? 1 : 0;
 		}
 		ast_mutex_unlock(&p->lock);
 	}
