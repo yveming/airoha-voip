@@ -3,7 +3,13 @@
  * Minimal Asterisk channel driver for the AN7581 + Le9641 FXS line.
  *
  * Audio:  /dev/an7581-pcm, 8 kHz signed linear, 16-bit, 10 ms frames.
+ *         The fd is registered with Asterisk and polled by the channel
+ *         thread; there is no private audio thread.
  * Control:/dev/an7581-slic, hook events plus ring/active ioctls.
+ *
+ * Locking: Asterisk may hold the channel lock when it calls hangup(), so
+ * the channel lock is always taken before pvt->lock.  Never take the
+ * channel lock while holding pvt->lock.
  */
 
 #include "asterisk.h"
@@ -26,6 +32,7 @@
 #include "asterisk/causes.h"
 #include "asterisk/format_cache.h"
 #include "asterisk/frame.h"
+#include "asterisk/indications.h"
 #include "asterisk/lock.h"
 #include "asterisk/logger.h"
 #include "asterisk/module.h"
@@ -63,12 +70,13 @@ struct an7581_slic_event {
 
 struct an7581_pvt {
 	struct ast_channel *owner;
+	struct ast_channel *audio_chan;
 	int ctl_fd;
 	int pcm_fd;
-	pthread_t audio_thread;
+	int early_media;
 	pthread_t monitor_thread;
-	int audio_stop;
 	int monitor_stop;
+	int audio_active;
 	int hook;
 	int incoming_ringing;
 	int wait_onhook;
@@ -77,6 +85,14 @@ struct an7581_pvt {
 	int dialtone_notch_hz;
 	int dialing;
 	int collecting;
+	int16_t rx_buf[FRAME_SAMPLES];
+	size_t rx_filled;
+	struct ast_frame read_frame;
+	int dtmf_held;
+	int dtmf_pending;
+	int dtmf_pending_count;
+	int dtmf_gap;
+	int dtmf_end_pending;
 	struct an7581_notch notch[2];
 	unsigned int notch_count;
 	struct ast_dsp *dsp;
@@ -277,167 +293,62 @@ static char dtmf_detect_custom(const int16_t *samples)
 	return map[br * 4 + bc];
 }
 
-static void an7581_queue_dtmf(struct an7581_pvt *p, char digit)
+static int an7581_start_audio(struct ast_channel *chan)
 {
-	struct ast_frame f = {
-		.frametype = AST_FRAME_DTMF_BEGIN,
-		.subclass.integer = digit,
-		.src = "an7581",
-	};
+	struct an7581_pvt *p = ast_channel_tech_pvt(chan);
 
-	ast_queue_frame(p->owner, &f);
-	f.frametype = AST_FRAME_DTMF_END;
-	ast_queue_frame(p->owner, &f);
-}
+	if (!p)
+		return -1;
 
-static void *an7581_audio_thread(void *data)
-{
-	struct an7581_pvt *p = data;
-	struct pollfd pfd;
-	int16_t buf[FRAME_SAMPLES];
-	size_t filled = 0;
-	char dtmf_held = 0;
-	char dtmf_pending = 0;
-	int dtmf_pending_count = 0;
-	int dtmf_gap = 1;
-	struct ast_frame f = {
-		.frametype = AST_FRAME_VOICE,
-		.subclass.format = ast_format_slin,
-		.src = "an7581",
-		.data.ptr = buf,
-		.datalen = sizeof(buf),
-		.samples = FRAME_SAMPLES,
-	};
-
-	memset(&pfd, 0, sizeof(pfd));
-	pfd.fd = p->pcm_fd;
-	pfd.events = POLLIN;
-
-	while (!__atomic_load_n(&p->audio_stop, __ATOMIC_RELAXED)) {
-		int ret = poll(&pfd, 1, 200);
-
-		if (ret < 0) {
-			if (errno == EINTR)
-				continue;
-			break;
-		}
-		if (ret == 0)
-			continue;
-		if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL))
-			break;
-		if (!(pfd.revents & (POLLIN | POLLRDNORM)))
-			continue;
-
-		ret = read(p->pcm_fd, (char *)buf + filled,
-			   sizeof(buf) - filled);
-		if (ret > 0) {
-			filled += ret;
-			if (filled < sizeof(buf))
-				continue;
-
-			apply_gain(buf, FRAME_SAMPLES, p->tx_gain_q15);
-			if (__atomic_load_n(&p->dialing, __ATOMIC_RELAXED) &&
-			    p->notch_count)
-				apply_notch(p, buf, FRAME_SAMPLES);
-			if (p->owner) {
-				if (__atomic_load_n(&p->collecting, __ATOMIC_RELAXED)) {
-					char digit = dtmf_detect_custom(buf);
-
-					if (digit) {
-						if (digit == dtmf_held) {
-							dtmf_gap = 0;
-							dtmf_pending = 0;
-							dtmf_pending_count = 0;
-						} else {
-							if (digit == dtmf_pending) {
-								if (dtmf_pending_count < 2)
-									dtmf_pending_count++;
-							} else {
-								dtmf_pending = digit;
-								dtmf_pending_count = 1;
-							}
-							if (dtmf_pending_count >= 2 && dtmf_gap >= 1) {
-								an7581_queue_dtmf(p, digit);
-								ast_verb(3, "AN7581: DTMF custom '%c'\n", digit);
-								__atomic_store_n(&p->dialing, 0,
-										 __ATOMIC_RELAXED);
-								dtmf_held = digit;
-								dtmf_gap = 0;
-								dtmf_pending = 0;
-								dtmf_pending_count = 0;
-							}
-						}
-					} else {
-						dtmf_pending = 0;
-						dtmf_pending_count = 0;
-						if (dtmf_gap < 3)
-							dtmf_gap++;
-						if (dtmf_gap >= 2)
-							dtmf_held = 0;
-					}
-					ast_queue_frame(p->owner, &f);
-				} else if (p->dsp) {
-					struct ast_frame *dspf = ast_dsp_process(p->owner,
-										 p->dsp, &f);
-
-					if (dspf && dspf != &ast_null_frame) {
-						ast_queue_frame(p->owner, dspf);
-						if (dspf != &f)
-							ast_frfree(dspf);
-					}
-				} else {
-					ast_queue_frame(p->owner, &f);
-				}
-			}
-			filled = 0;
-		} else if (ret < 0) {
-			if (errno == EINTR || errno == EAGAIN)
-				continue;
-			break;
-		} else if (ret == 0) {
-			break;
-		}
-	}
-	return NULL;
-}
-
-static int an7581_start_audio(struct an7581_pvt *p)
-{
 	ast_mutex_lock(&p->lock);
-	ast_debug(3, "AN7581: start_audio fd=%d dsp=%p thread=%lu\n",
-		  p->pcm_fd, (void *)p->dsp, (unsigned long)p->audio_thread);
+	if (p->owner != chan) {
+		ast_mutex_unlock(&p->lock);
+		return -1;
+	}
+	if (__atomic_load_n(&p->audio_chan, __ATOMIC_ACQUIRE) &&
+	    __atomic_load_n(&p->audio_chan, __ATOMIC_ACQUIRE) != chan) {
+		ast_log(LOG_WARNING, "AN7581: PCM path is busy; refusing start for %s\n",
+			ast_channel_name(chan));
+		ast_mutex_unlock(&p->lock);
+		return -1;
+	}
+	p->audio_active = 0;
+	__atomic_store_n(&p->audio_chan, NULL, __ATOMIC_RELEASE);
 	if (p->pcm_fd >= 0) {
-		if (p->audio_thread && p->dsp) {
-			ast_mutex_unlock(&p->lock);
-			return 0;
-		}
-		if (p->audio_thread && !p->dsp) {
-			p->dsp = ast_dsp_new();
-			if (p->dsp) {
-				ast_dsp_set_features(p->dsp, DSP_FEATURE_DIGIT_DETECT);
-				ast_dsp_set_digitmode(p->dsp, DSP_DIGITMODE_DTMF |
-						  DSP_DIGITMODE_RELAXDTMF);
-				ast_log(LOG_WARNING, "AN7581: allocated missing DSP on live audio thread\n");
-				ast_mutex_unlock(&p->lock);
-				return 0;
-			}
-			ast_log(LOG_WARNING, "AN7581: DSP allocation failed; keeping audio without DTMF\n");
-			ast_mutex_unlock(&p->lock);
-			return 0;
-		}
-		ast_log(LOG_WARNING, "AN7581: stale audio state fd=%d dsp=%p thread=%lu; reopening\n",
-			p->pcm_fd, (void *)p->dsp, (unsigned long)p->audio_thread);
 		close(p->pcm_fd);
 		p->pcm_fd = -1;
 	}
-	p->pcm_fd = open(p->pcm_dev, O_RDWR);
+	if (p->dsp) {
+		ast_dsp_free(p->dsp);
+		p->dsp = NULL;
+	}
+
+	p->pcm_fd = open(p->pcm_dev, O_RDWR | O_NONBLOCK);
 	if (p->pcm_fd < 0) {
 		ast_log(LOG_ERROR, "AN7581: cannot open %s: %s\n", p->pcm_dev,
 			strerror(errno));
 		ast_mutex_unlock(&p->lock);
 		return -1;
 	}
-	p->audio_stop = 0;
+
+	/* an7581-pcm starts streaming and pre-fills TX silence on open. */
+	p->audio_active = 1;
+	__atomic_store_n(&p->audio_chan, chan, __ATOMIC_RELEASE);
+	p->rx_filled = 0;
+	p->dtmf_held = 0;
+	p->dtmf_pending = 0;
+	p->dtmf_pending_count = 0;
+	p->dtmf_gap = 1;
+	p->dtmf_end_pending = 0;
+
+	memset(&p->read_frame, 0, sizeof(p->read_frame));
+	p->read_frame.frametype = AST_FRAME_VOICE;
+	p->read_frame.subclass.format = ast_format_slin;
+	p->read_frame.src = "an7581";
+	p->read_frame.data.ptr = p->rx_buf;
+	p->read_frame.datalen = sizeof(p->rx_buf);
+	p->read_frame.samples = FRAME_SAMPLES;
+
 	p->dsp = ast_dsp_new();
 	if (p->dsp) {
 		ast_dsp_set_features(p->dsp, DSP_FEATURE_DIGIT_DETECT);
@@ -449,46 +360,30 @@ static int an7581_start_audio(struct an7581_pvt *p)
 	p->notch_count = 0;
 	if (p->dialtone_notch_hz > 0)
 		add_dialtone_notch(p, p->dialtone_notch_hz);
-	if (ast_pthread_create_background(&p->audio_thread, NULL,
-					  an7581_audio_thread, p)) {
-		if (p->dsp) {
-			ast_dsp_free(p->dsp);
-			p->dsp = NULL;
-		}
-		close(p->pcm_fd);
-		p->pcm_fd = -1;
-		ast_mutex_unlock(&p->lock);
-		return -1;
-	}
+
+	/* Asterisk polls this fd from ast_waitfor(); no audio thread needed. */
+	ast_channel_set_fd(chan, 0, p->pcm_fd);
 	ast_mutex_unlock(&p->lock);
 	return 0;
 }
 
-static void an7581_stop_audio(struct an7581_pvt *p)
+static void an7581_stop_audio_locked(struct an7581_pvt *p,
+				      struct ast_channel *chan)
 {
-	ast_mutex_lock(&p->lock);
-	if (!p->audio_thread) {
-		if (p->pcm_fd >= 0)
-			close(p->pcm_fd);
-		p->pcm_fd = -1;
-		ast_mutex_unlock(&p->lock);
-		return;
-	}
-	p->audio_stop = 1;
-	ast_mutex_unlock(&p->lock);
-
-	pthread_join(p->audio_thread, NULL);
-
-	ast_mutex_lock(&p->lock);
-	p->audio_thread = 0;
-	if (p->pcm_fd >= 0)
+	p->audio_active = 0;
+	if (__atomic_load_n(&p->audio_chan, __ATOMIC_ACQUIRE) == chan)
+		__atomic_store_n(&p->audio_chan, NULL, __ATOMIC_RELEASE);
+	ast_channel_set_fd(chan, 0, -1);
+	if (p->pcm_fd >= 0) {
 		close(p->pcm_fd);
-	p->pcm_fd = -1;
+		p->pcm_fd = -1;
+	}
 	if (p->dsp) {
 		ast_dsp_free(p->dsp);
 		p->dsp = NULL;
 	}
-	ast_mutex_unlock(&p->lock);
+	p->rx_filled = 0;
+	p->dtmf_end_pending = 0;
 }
 
 static struct ast_channel *an7581_new(struct an7581_pvt *p, int state,
@@ -519,6 +414,9 @@ static struct ast_channel *an7581_new(struct an7581_pvt *p, int state,
 	ast_channel_nativeformats_set(chan, caps);
 	ao2_ref(caps, -1);
 	ast_channel_tech_pvt_set(chan, p);
+	__atomic_store_n(&p->early_media, 0, __ATOMIC_RELEASE);
+	pbx_builtin_setvar_helper(chan, "AN7581_EARLY_MEDIA", "0");
+	pbx_builtin_setvar_helper(chan, "AN7581_ANSWERED", "0");
 	ast_channel_stage_snapshot_done(chan);
 	ast_channel_unlock(chan);
 
@@ -540,13 +438,18 @@ static void an7581_start_outgoing(struct an7581_pvt *p)
 		ast_mutex_unlock(&p->lock);
 		return;
 	}
+	/*
+	 * Activate the line before publishing the owner.  The monitor
+	 * thread takes the same lock, so it cannot observe the new channel
+	 * before the SLIC is in the active state.
+	 */
+	ioctl(p->ctl_fd, AN7581_SLIC_SET_ACTIVE, &on);
 	p->owner = chan;
 	__atomic_store_n(&p->dialing, 1, __ATOMIC_RELAXED);
 	__atomic_store_n(&p->collecting, 1, __ATOMIC_RELAXED);
 	ast_mutex_unlock(&p->lock);
 
-	ioctl(p->ctl_fd, AN7581_SLIC_SET_ACTIVE, &on);
-	if (an7581_start_audio(p)) {
+	if (an7581_start_audio(chan)) {
 		ast_hangup(chan);
 		return;
 	}
@@ -592,11 +495,11 @@ static void *an7581_monitor_thread(void *data)
 		if (read(p->ctl_fd, &ev, sizeof(ev)) != sizeof(ev))
 			continue;
 
-		p->hook = ev.hook;
 		answer = outgoing = hangup = 0;
 		chan = NULL;
 
 		ast_mutex_lock(&p->lock);
+		p->hook = ev.hook;
 		if (p->hook) {
 			if (p->incoming_ringing && p->owner) {
 				answer = 1;
@@ -614,6 +517,11 @@ static void *an7581_monitor_thread(void *data)
 				ast_channel_ref(chan);
 				p->owner = NULL;
 				p->incoming_ringing = 0;
+				/*
+				 * Release the PCM fd while the line lock is held so a
+				 * quick re-offhook cannot race with the old fd.
+				 */
+				an7581_stop_audio_locked(p, chan);
 			}
 		}
 		ast_mutex_unlock(&p->lock);
@@ -623,17 +531,20 @@ static void *an7581_monitor_thread(void *data)
 
 			ioctl(p->ctl_fd, AN7581_SLIC_SET_RING, &off);
 			ioctl(p->ctl_fd, AN7581_SLIC_SET_ACTIVE, &on);
-			an7581_start_audio(p);
-			ast_setstate(chan, AST_STATE_UP);
-			ast_queue_control(chan, AST_CONTROL_ANSWER);
-			ast_log(LOG_NOTICE, "AN7581: FXS answered incoming call\n");
+			if (an7581_start_audio(chan)) {
+				ast_log(LOG_ERROR, "AN7581: cannot start audio on FXS answer\n");
+				ast_softhangup(chan, AST_SOFTHANGUP_DEV);
+			} else {
+				ast_setstate(chan, AST_STATE_UP);
+				ast_queue_control(chan, AST_CONTROL_ANSWER);
+				ast_log(LOG_NOTICE, "AN7581: FXS answered incoming call\n");
+			}
 		}
 		if (outgoing)
 			an7581_start_outgoing(p);
 		if (hangup) {
 			int off = 0, idle = 0;
 
-			an7581_stop_audio(p);
 			ioctl(p->ctl_fd, AN7581_SLIC_SET_RING, &off);
 			ioctl(p->ctl_fd, AN7581_SLIC_SET_ACTIVE, &idle);
 			ast_log(LOG_NOTICE, "AN7581: FXS went onhook\n");
@@ -653,6 +564,7 @@ static struct ast_channel *an7581_requester(const char *type,
 {
 	struct ast_channel *chan;
 	int on = 1;
+	int offhook;
 
 	if (!pvt)
 		return NULL;
@@ -674,17 +586,33 @@ static struct ast_channel *an7581_requester(const char *type,
 		*cause = AST_CAUSE_CONGESTION;
 		return NULL;
 	}
+	/*
+	 * Put the SLIC in the right state before publishing the owner.
+	 * The hook monitor takes the same lock, so an off-hook event
+	 * cannot answer a line that has not started ringing yet.
+	 */
+	offhook = pvt->hook;
+	if (offhook) {
+		ioctl(pvt->ctl_fd, AN7581_SLIC_SET_ACTIVE, &on);
+		pvt->incoming_ringing = 0;
+	} else {
+		ioctl(pvt->ctl_fd, AN7581_SLIC_SET_RING, &on);
+		pvt->incoming_ringing = 1;
+	}
 	pvt->owner = chan;
-	pvt->incoming_ringing = pvt->hook ? 0 : 1;
 	pvt->wait_onhook = 0;
 	ast_mutex_unlock(&pvt->lock);
 
-	if (pvt->hook) {
-		ioctl(pvt->ctl_fd, AN7581_SLIC_SET_ACTIVE, &on);
-		an7581_start_audio(pvt);
+	if (offhook) {
+		if (an7581_start_audio(chan)) {
+			ast_log(LOG_ERROR, "AN7581: cannot start audio for off-hook incoming call\n");
+			ast_hangup(chan);
+			*cause = AST_CAUSE_CONGESTION;
+			return NULL;
+		}
 		ast_setstate(chan, AST_STATE_UP);
+		ast_queue_control(chan, AST_CONTROL_ANSWER);
 	} else {
-		ioctl(pvt->ctl_fd, AN7581_SLIC_SET_RING, &on);
 		ast_log(LOG_NOTICE, "AN7581: ringing FXS for incoming call\n");
 	}
 
@@ -695,32 +623,31 @@ static int an7581_hangup(struct ast_channel *chan)
 {
 	struct an7581_pvt *p = ast_channel_tech_pvt(chan);
 	int off = 0, idle = 0;
-	bool current, orphan;
+	bool current;
 
 	if (!p)
 		return -1;
 
 	ast_mutex_lock(&p->lock);
 	current = (p->owner == chan);
-	orphan = (!p->owner);
-	ast_mutex_unlock(&p->lock);
-
-	if (current || orphan) {
-		an7581_stop_audio(p);
-
-		ast_mutex_lock(&p->lock);
-		current = (p->owner == chan);
-		if (current || !p->owner) {
-			ioctl(p->ctl_fd, AN7581_SLIC_SET_RING, &off);
-			ioctl(p->ctl_fd, AN7581_SLIC_SET_ACTIVE, &idle);
-			p->owner = NULL;
-			__atomic_store_n(&p->dialing, 0, __ATOMIC_RELAXED);
-			__atomic_store_n(&p->collecting, 0, __ATOMIC_RELAXED);
-			p->incoming_ringing = 0;
-			p->wait_onhook = p->hook ? 1 : 0;
-		}
-		ast_mutex_unlock(&p->lock);
+	if (current || !p->owner) {
+		an7581_stop_audio_locked(p, chan);
+		ioctl(p->ctl_fd, AN7581_SLIC_SET_RING, &off);
+		ioctl(p->ctl_fd, AN7581_SLIC_SET_ACTIVE, &idle);
+		p->owner = NULL;
+		__atomic_store_n(&p->dialing, 0, __ATOMIC_RELAXED);
+		__atomic_store_n(&p->collecting, 0, __ATOMIC_RELAXED);
+		p->incoming_ringing = 0;
+		__atomic_store_n(&p->early_media, 0, __ATOMIC_RELEASE);
+		/*
+		 * Only a remote hangup while the phone is still off-hook
+		 * needs to block redial until the next on-hook.  If the
+		 * monitor already saw the on-hook, a quick re-offhook must
+		 * be allowed through.
+		 */
+		p->wait_onhook = current ? (p->hook ? 1 : 0) : 0;
 	}
+	ast_mutex_unlock(&p->lock);
 
 	ast_channel_tech_pvt_set(chan, NULL);
 	return 0;
@@ -733,7 +660,120 @@ static int an7581_answer(struct ast_channel *chan)
 
 static struct ast_frame *an7581_read(struct ast_channel *chan)
 {
-	return &ast_null_frame;
+	struct an7581_pvt *p = ast_channel_tech_pvt(chan);
+	ssize_t n;
+
+	if (!p)
+		return &ast_null_frame;
+
+	ast_mutex_lock(&p->lock);
+	if (!p->audio_active || p->pcm_fd < 0 ||
+	    __atomic_load_n(&p->audio_chan, __ATOMIC_ACQUIRE) != chan) {
+		ast_mutex_unlock(&p->lock);
+		return &ast_null_frame;
+	}
+
+	if (p->dtmf_end_pending) {
+		memset(&p->read_frame, 0, sizeof(p->read_frame));
+		p->read_frame.frametype = AST_FRAME_DTMF_END;
+		p->read_frame.subclass.integer = p->dtmf_end_pending;
+		p->read_frame.src = "an7581";
+		p->dtmf_end_pending = 0;
+		ast_mutex_unlock(&p->lock);
+		return &p->read_frame;
+	}
+
+	while (p->rx_filled < sizeof(p->rx_buf)) {
+		n = read(p->pcm_fd, (char *)p->rx_buf + p->rx_filled,
+			 sizeof(p->rx_buf) - p->rx_filled);
+		if (n > 0) {
+			p->rx_filled += n;
+			continue;
+		}
+		if (n < 0 && (errno == EAGAIN || errno == EINTR))
+			break;
+		break;
+	}
+
+	if (p->rx_filled < sizeof(p->rx_buf)) {
+		ast_mutex_unlock(&p->lock);
+		return &ast_null_frame;
+	}
+
+	apply_gain(p->rx_buf, FRAME_SAMPLES, p->tx_gain_q15);
+	if (__atomic_load_n(&p->dialing, __ATOMIC_RELAXED) && p->notch_count)
+		apply_notch(p, p->rx_buf, FRAME_SAMPLES);
+
+	if (__atomic_load_n(&p->collecting, __ATOMIC_RELAXED)) {
+		char digit = dtmf_detect_custom(p->rx_buf);
+
+		if (digit) {
+			if (digit == p->dtmf_held) {
+				p->dtmf_gap = 0;
+				p->dtmf_pending = 0;
+				p->dtmf_pending_count = 0;
+			} else {
+				if (digit == p->dtmf_pending) {
+					if (p->dtmf_pending_count < 2)
+						p->dtmf_pending_count++;
+				} else {
+					p->dtmf_pending = digit;
+					p->dtmf_pending_count = 1;
+				}
+				if (p->dtmf_pending_count >= 2 && p->dtmf_gap >= 1) {
+					ast_verb(3, "AN7581: DTMF custom '%c'\n", digit);
+					__atomic_store_n(&p->dialing, 0, __ATOMIC_RELAXED);
+					p->dtmf_held = digit;
+					p->dtmf_gap = 0;
+					p->dtmf_pending = 0;
+					p->dtmf_pending_count = 0;
+					p->dtmf_end_pending = digit;
+					p->rx_filled = 0;
+					memset(&p->read_frame, 0, sizeof(p->read_frame));
+					p->read_frame.frametype = AST_FRAME_DTMF_BEGIN;
+					p->read_frame.subclass.integer = digit;
+					p->read_frame.src = "an7581";
+					ast_mutex_unlock(&p->lock);
+					return &p->read_frame;
+				}
+			}
+		} else {
+			p->dtmf_pending = 0;
+			p->dtmf_pending_count = 0;
+			if (p->dtmf_gap < 3)
+				p->dtmf_gap++;
+			if (p->dtmf_gap >= 2)
+				p->dtmf_held = 0;
+		}
+	}
+
+	p->rx_filled = 0;
+	memset(&p->read_frame, 0, sizeof(p->read_frame));
+	p->read_frame.frametype = AST_FRAME_VOICE;
+	p->read_frame.subclass.format = ast_format_slin;
+	p->read_frame.src = "an7581";
+	p->read_frame.data.ptr = p->rx_buf;
+	p->read_frame.datalen = sizeof(p->rx_buf);
+	p->read_frame.samples = FRAME_SAMPLES;
+
+	if (!__atomic_load_n(&p->collecting, __ATOMIC_RELAXED) && p->dsp) {
+		struct ast_frame *dspf = ast_dsp_process(chan, p->dsp, &p->read_frame);
+
+		if (dspf == &ast_null_frame) {
+			ast_mutex_unlock(&p->lock);
+			return &ast_null_frame;
+		}
+		if (dspf && dspf != &p->read_frame) {
+			/* dsp->f is private to the DSP object; copy it out. */
+			p->read_frame = *dspf;
+			p->read_frame.mallocd = 0;
+			p->read_frame.data.ptr = NULL;
+			p->read_frame.datalen = 0;
+		}
+	}
+
+	ast_mutex_unlock(&p->lock);
+	return &p->read_frame;
 }
 
 static int an7581_write(struct ast_channel *chan, struct ast_frame *f)
@@ -747,6 +787,10 @@ static int an7581_write(struct ast_channel *chan, struct ast_frame *f)
 		return 0;
 
 	ast_mutex_lock(&p->lock);
+	if (__atomic_load_n(&p->audio_chan, __ATOMIC_ACQUIRE) != chan) {
+		ast_mutex_unlock(&p->lock);
+		return 0;
+	}
 	if (p->pcm_fd >= 0) {
 		ssize_t n;
 
@@ -765,6 +809,22 @@ static int an7581_write(struct ast_channel *chan, struct ast_frame *f)
 	return ret;
 }
 
+static void an7581_play_ringback(struct ast_channel *chan)
+{
+	struct ast_tone_zone_sound *ts;
+
+	ts = ast_get_indication_tone(ast_channel_zone(chan), "ringback");
+	if (!ts)
+		ts = ast_get_indication_tone(ast_channel_zone(chan), "ring");
+	if (!ts) {
+		ast_log(LOG_WARNING, "AN7581: no ringback indication tone\n");
+		return;
+	}
+
+	ast_playtones_start(chan, 0, ts->data, 1);
+	ast_tone_zone_sound_unref(ts);
+}
+
 static int an7581_indicate(struct ast_channel *chan, int cond,
 			   const void *data, size_t datalen)
 {
@@ -772,14 +832,35 @@ static int an7581_indicate(struct ast_channel *chan, int cond,
 
 	switch (cond) {
 	case AST_CONTROL_RINGING:
-	case AST_CONTROL_PROGRESS:
-		if (p)
+		if (p) {
 			__atomic_store_n(&p->collecting, 0, __ATOMIC_RELAXED);
+			/* A 180 after a 183 with SDP must not replace early media. */
+			if (__atomic_load_n(&p->early_media, __ATOMIC_ACQUIRE))
+				return 0;
+		}
+		pbx_builtin_setvar_helper(chan, "AN7581_EARLY_MEDIA", "0");
+		an7581_play_ringback(chan);
+		return 0;
+	case AST_CONTROL_PROGRESS:
+		if (p) {
+			__atomic_store_n(&p->collecting, 0, __ATOMIC_RELAXED);
+			__atomic_store_n(&p->early_media, 1, __ATOMIC_RELEASE);
+		}
+		pbx_builtin_setvar_helper(chan, "AN7581_EARLY_MEDIA", "1");
+		ast_playtones_stop(chan);
 		return 0;
 	case AST_CONTROL_ANSWER:
+		pbx_builtin_setvar_helper(chan, "AN7581_ANSWERED", "1");
+		ast_playtones_stop(chan);
+		if (p) {
+			__atomic_store_n(&p->dialing, 0, __ATOMIC_RELAXED);
+			__atomic_store_n(&p->collecting, 0, __ATOMIC_RELAXED);
+		}
+		return 0;
 	case AST_CONTROL_HANGUP:
 	case AST_CONTROL_BUSY:
 	case AST_CONTROL_CONGESTION:
+		ast_playtones_stop(chan);
 		if (p) {
 			__atomic_store_n(&p->dialing, 0, __ATOMIC_RELAXED);
 			__atomic_store_n(&p->collecting, 0, __ATOMIC_RELAXED);
@@ -796,6 +877,8 @@ static int an7581_fixup(struct ast_channel *oldchan, struct ast_channel *newchan
 
 	if (p) {
 		ast_mutex_lock(&p->lock);
+		if (__atomic_load_n(&p->audio_chan, __ATOMIC_ACQUIRE) == oldchan)
+			__atomic_store_n(&p->audio_chan, newchan, __ATOMIC_RELEASE);
 		p->owner = newchan;
 		ast_mutex_unlock(&p->lock);
 	}
@@ -911,6 +994,17 @@ static int unload_module(void)
 	ast_channel_unregister(&an7581_tech);
 	ao2_ref(an7581_tech.capabilities, -1);
 	an7581_tech.capabilities = NULL;
+	ast_mutex_lock(&pvt->lock);
+	if (pvt->pcm_fd >= 0) {
+		close(pvt->pcm_fd);
+		pvt->pcm_fd = -1;
+	}
+	if (pvt->dsp) {
+		ast_dsp_free(pvt->dsp);
+		pvt->dsp = NULL;
+	}
+	pvt->audio_active = 0;
+	ast_mutex_unlock(&pvt->lock);
 	close(pvt->ctl_fd);
 	ast_mutex_destroy(&pvt->lock);
 	ast_free(pvt);

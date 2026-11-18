@@ -589,9 +589,12 @@ write_dialplan() {
     if [ "$protocol" = "ims_sip" ] && [ -n "$sip_user" ] && [ -n "$home_domain" ]; then
         ppi_uri="<sip:${sip_user}@${home_domain}\;user=phone>"
     fi
-    dial_opt=
+    # Dial() returns non-zero when the called party hangs up unless the
+    # "g" option is set.  Without it the PBX exits before postdial can
+    # play the busy tone.
+    dial_opt=",g"
     if [ "$jitter_enabled" = "1" ] || [ -n "$ppi_uri" ]; then
-        dial_opt=",b(voice-pre^s^1(${ppi_uri}))"
+        dial_opt=",b(voice-pre^s^1(${ppi_uri}))g"
     fi
 
     [ -f "$EXT" ] && cp -f "$EXT" "$EXT.bak" 2>/dev/null || true
@@ -613,12 +616,12 @@ write_dialplan() {
             [ -n "$fixed" ] || fixed=1000
             echo "exten => s,1,Answer()"
             echo " same => n,Dial(PJSIP/$fixed@provider,$timeout$dial_opt)"
-            echo " same => n,Hangup()"
+            echo " same => n,Goto(postdial,1)"
         elif [ "$test_mode" = "sip_read" ]; then
             echo "exten => s,1,Answer()"
             echo " same => n,Read(NUMBER,,20,,,10)"
             echo " same => n,Dial(PJSIP/\${NUMBER}@provider,$timeout$dial_opt)"
-            echo " same => n,Hangup()"
+            echo " same => n,Goto(postdial,1)"
         elif [ "$test_mode" = "sip_digitmap" ]; then
             echo "exten => s,1,Answer()"
             echo " same => n,Read(FIRST,dial,1,i,,$offhook_timer)"
@@ -635,7 +638,7 @@ write_dialplan() {
                     [ -n "$pat" ] || continue
                     echo "$pat" | grep -qE '^[]0-9X*#.+[-]+$' || continue
                     echo "exten => _$pat,1,Dial(PJSIP/\${EXTEN}@provider,$timeout$dial_opt)"
-                    echo " same => n,Hangup()"
+                    echo " same => n,Goto(postdial,1)"
                 done
                 echo "exten => _X.,1,Playtones(congestion)"
                 echo " same => n,Wait($busy_timer)"
@@ -643,7 +646,7 @@ write_dialplan() {
             else
                 echo "exten => _X.,1,NoOp(Voice calling \${EXTEN})"
                 echo " same => n,Dial(PJSIP/\${EXTEN}@provider,$timeout$dial_opt)"
-                echo " same => n,Hangup()"
+                echo " same => n,Goto(postdial,1)"
             fi
 
             echo "exten => congestion,1,Playtones(congestion)"
@@ -653,6 +656,16 @@ write_dialplan() {
             echo "exten => s,1,Answer()"
             echo " same => n,Echo()"
         fi
+
+        echo "exten => postdial,1,NoOp(Voice result=\${DIALSTATUS} early=\${AN7581_EARLY_MEDIA} answered=\${AN7581_ANSWERED})"
+        echo " same => n,GotoIf(\$[\"\${DIALSTATUS}\" = \"ANSWER\"]?busy,1)"
+        echo " same => n,GotoIf(\$[\"\${AN7581_ANSWERED}\" = \"1\"]?busy,1)"
+        echo " same => n,GotoIf(\$[\"\${AN7581_EARLY_MEDIA}\" = \"1\"]?hangup,1)"
+        echo " same => n,Goto(busy,1)"
+        echo "exten => busy,1,Playtones(busy)"
+        echo " same => n,Wait($busy_timer)"
+        echo " same => n,Hangup()"
+        echo "exten => hangup,1,Hangup()"
 
         echo
         echo "[from-sip]"
