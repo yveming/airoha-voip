@@ -208,11 +208,13 @@ return view.extend({
 
 		var fxsRows = [
 			row(_('FXS device'), d.fxs_device || '/dev/fxs0'),
-			row(_('PCM channel'), d.pcm_channel || 'PCM0 (8 kHz, s16le)'),
+			row(_('PCM channel'),
+			    d.pcm_present === '1'
+				? (d.pcm_channel || 'PCM0 (8 kHz, s16le)')
+				: _('Missing')),
 			row(_('Terminal ID'), d.terminal_id || 'FXS/line1'),
 			row(_('Hook'), hookName(d.fxs_hook)),
-			row(_('Line state'), fxsStateName(d.fxs_state)),
-			row(_('PCM device'), d.pcm_present === '1' ? _('Exists') : _('Missing'))
+			row(_('Line state'), fxsStateName(d.fxs_state))
 		];
 
 		return E('div', { 'class': 'cbi-map' }, [

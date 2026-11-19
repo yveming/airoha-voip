@@ -913,10 +913,6 @@ msgstr "提示"
 msgid "Voice service is disabled."
 msgstr "语音业务已禁用。"
 
-#: package/luci-app-voip/htdocs/luci-static/resources/view/voip/status.js:216
-msgid "Exists"
-msgstr "存在"
-
 msgid "Missing"
 msgstr "缺失"
 
@@ -1004,10 +1000,6 @@ msgstr "摘挂机"
 #: package/luci-app-voip/htdocs/luci-static/resources/view/voip/status.js:214
 msgid "Line state"
 msgstr "线路状态"
-
-#: package/luci-app-voip/htdocs/luci-static/resources/view/voip/status.js:216
-msgid "PCM device"
-msgstr "PCM 设备"
 
 #: package/luci-app-voip/htdocs/luci-static/resources/view/voip/status.js:224
 msgid "SIP / PJSIP"
