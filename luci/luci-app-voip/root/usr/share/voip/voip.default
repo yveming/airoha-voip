@@ -1,6 +1,6 @@
-# Single FXS port: /dev/an7581-slic on PCM channel 0, slot 4.
-# The AN7581 driver opens the PCM/SLIC devices directly; no line-card or
-# port selection is exposed in the UI.
+# Single FXS port: /dev/fxs0 with the PCM stream on /dev/fxs0-pcm.
+# The fxs-core provider opens the platform PCM/SLIC devices; no line-card
+# or port selection is exposed in the UI.
 
 config voip 'config'
 	option enabled '1'

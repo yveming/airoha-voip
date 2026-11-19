@@ -91,8 +91,10 @@ function hookName(value) {
 
 function fxsStateName(value) {
 	switch (value) {
-	case '0x23': return _('Codec path ready');
-	case '0x00': return _('Idle');
+	case 'idle': return _('Idle');
+	case 'ringing': return _('Ringing');
+	case 'active': return _('In call');
+	case 'fault': return _('Fault');
 	default: return value || '—';
 	}
 }
@@ -205,9 +207,9 @@ return view.extend({
 			sipRows.push(row(_('Note'), note));
 
 		var fxsRows = [
-			row(_('FXS device'), d.fxs_device || '/dev/an7581-slic'),
-			row(_('PCM channel'), d.pcm_channel || 'PCM0 (channel 0, slot 4)'),
-			row(_('Terminal ID'), d.terminal_id || 'AN7581/line1'),
+			row(_('FXS device'), d.fxs_device || '/dev/fxs0'),
+			row(_('PCM channel'), d.pcm_channel || 'PCM0 (8 kHz, s16le)'),
+			row(_('Terminal ID'), d.terminal_id || 'FXS/line1'),
 			row(_('Hook'), hookName(d.fxs_hook)),
 			row(_('SLIC state'), fxsStateName(d.fxs_state)),
 			row(_('PCM device'), d.pcm_present === '1' ? _('Exists') : _('Missing'))

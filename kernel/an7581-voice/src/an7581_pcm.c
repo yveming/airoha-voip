@@ -49,7 +49,6 @@
 #include <linux/kfifo.h>
 #include <linux/kthread.h>
 #include <linux/log2.h>
-#include <linux/miscdevice.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/of.h>
@@ -125,7 +124,6 @@ struct an7581_pcm {
 	bool tone_mode;
 	unsigned int tone_phase;
 
-	struct miscdevice misc;
 	struct kfifo tx_fifo;
 	struct kfifo rx_fifo;
 	wait_queue_head_t rx_wait;
@@ -819,14 +817,50 @@ static __poll_t pcm_dev_poll(struct file *file, poll_table *wait)
 	return mask;
 }
 
-static const struct file_operations pcm_fops = {
-	.owner = THIS_MODULE,
-	.open = pcm_dev_open,
-	.release = pcm_dev_release,
-	.read = pcm_dev_read,
-	.write = pcm_dev_write,
-	.poll = pcm_dev_poll,
-};
+bool an7581_pcm_fxs_ready(void)
+{
+	return pcm_dbg != NULL;
+}
+EXPORT_SYMBOL_GPL(an7581_pcm_fxs_ready);
+
+int an7581_pcm_fxs_open(struct file *file)
+{
+	return pcm_dev_open(NULL, file);
+}
+EXPORT_SYMBOL_GPL(an7581_pcm_fxs_open);
+
+void an7581_pcm_fxs_close(struct file *file)
+{
+	pcm_dev_release(NULL, file);
+}
+EXPORT_SYMBOL_GPL(an7581_pcm_fxs_close);
+
+ssize_t an7581_pcm_fxs_read(struct file *file, char __user *buf,
+			    size_t count, loff_t *ppos)
+{
+	return pcm_dev_read(file, buf, count, ppos);
+}
+EXPORT_SYMBOL_GPL(an7581_pcm_fxs_read);
+
+ssize_t an7581_pcm_fxs_write(struct file *file, const char __user *buf,
+			     size_t count, loff_t *ppos)
+{
+	return pcm_dev_write(file, buf, count, ppos);
+}
+EXPORT_SYMBOL_GPL(an7581_pcm_fxs_write);
+
+__poll_t an7581_pcm_fxs_poll(struct file *file, poll_table *wait)
+{
+	return pcm_dev_poll(file, wait);
+}
+EXPORT_SYMBOL_GPL(an7581_pcm_fxs_poll);
+
+int an7581_pcm_fxs_set_echo_cancel(bool on)
+{
+	WRITE_ONCE(lec_enable, on);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(an7581_pcm_fxs_set_echo_cancel);
 
 static ssize_t pcm_proc_read(struct file *file, char __user *ubuf,
 			     size_t count, loff_t *ppos)
@@ -920,20 +954,9 @@ static int an7581_pcm_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, pcm);
 	pcm_dbg = pcm;
 	proc_create(DRV_NAME, 0644, NULL, &pcm_proc_ops);
-	pcm->misc.minor = MISC_DYNAMIC_MINOR;
-	pcm->misc.name = DRV_NAME;
-	pcm->misc.fops = &pcm_fops;
-	ret = misc_register(&pcm->misc);
-	if (ret) {
-		remove_proc_entry(DRV_NAME, NULL);
-		if (pcm->thread)
-			kthread_stop(pcm->thread);
-		pcm->thread = NULL;
-		return ret;
-	}
 	dev_info(&pdev->dev,
-		 "AN7581 PCM ready (/dev/%s), irq=%d, refill=%s, OSLEC=%s\n",
-		 DRV_NAME, pcm->irq,
+		 "AN7581 PCM ready for fxs-core, irq=%d, refill=%s, OSLEC=%s\n",
+		 pcm->irq,
 		 pcm->irq >= 0 ? "irq" : "kthread-poll",
 		 READ_ONCE(lec_enable) ? "on" : "off");
 	return 0;
@@ -943,7 +966,6 @@ static void an7581_pcm_remove(struct platform_device *pdev)
 {
 	struct an7581_pcm *pcm = platform_get_drvdata(pdev);
 
-	misc_deregister(&pcm->misc);
 	remove_proc_entry(DRV_NAME, NULL);
 	if (pcm->thread)
 		kthread_stop(pcm->thread);

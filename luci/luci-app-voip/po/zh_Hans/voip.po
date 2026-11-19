@@ -819,13 +819,21 @@ msgstr "挂机"
 msgid "Off-hook"
 msgstr "摘机"
 
-#: package/luci-app-voip/htdocs/luci-static/resources/view/voip/status.js:94
-msgid "Codec path ready"
-msgstr "编解码通道就绪"
-
-#: package/luci-app-voip/htdocs/luci-static/resources/view/voip/status.js:95
+#: package/luci-app-voip/htdocs/luci-static/resources/view/voip/status.js
 msgid "Idle"
 msgstr "空闲"
+
+#: package/luci-app-voip/htdocs/luci-static/resources/view/voip/status.js
+msgid "Ringing"
+msgstr "振铃"
+
+#: package/luci-app-voip/htdocs/luci-static/resources/view/voip/status.js
+msgid "In call"
+msgstr "通话中"
+
+#: package/luci-app-voip/htdocs/luci-static/resources/view/voip/status.js
+msgid "Fault"
+msgstr "故障"
 
 #: package/luci-app-voip/htdocs/luci-static/resources/view/voip/status.js:102
 msgid "Asterisk is not running."
