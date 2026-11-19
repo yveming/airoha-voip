@@ -4,7 +4,7 @@ LUCI_TITLE:=LuCI VoIP / SIP configuration
 LUCI_DEPENDS:=+luci-base +asterisk +asterisk-chan-fxs \
 	+asterisk-pjsip +asterisk-res-pjproject +ip-full
 PKG_VERSION:=0.2.1
-PKG_RELEASE:=3
+PKG_RELEASE:=4
 PKG_LICENSE:=Apache-2.0
 
 include $(TOPDIR)/feeds/luci/luci.mk

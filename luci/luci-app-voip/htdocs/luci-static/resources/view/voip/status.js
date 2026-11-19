@@ -211,7 +211,7 @@ return view.extend({
 			row(_('PCM channel'), d.pcm_channel || 'PCM0 (8 kHz, s16le)'),
 			row(_('Terminal ID'), d.terminal_id || 'FXS/line1'),
 			row(_('Hook'), hookName(d.fxs_hook)),
-			row(_('SLIC state'), fxsStateName(d.fxs_state)),
+			row(_('Line state'), fxsStateName(d.fxs_state)),
 			row(_('PCM device'), d.pcm_present === '1' ? _('Exists') : _('Missing'))
 		];
 

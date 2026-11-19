@@ -1001,9 +1001,9 @@ msgstr "终端 ID"
 msgid "Hook"
 msgstr "摘挂机"
 
-#: package/luci-app-voip/htdocs/luci-static/resources/view/voip/status.js:215
-msgid "SLIC state"
-msgstr "SLIC 状态"
+#: package/luci-app-voip/htdocs/luci-static/resources/view/voip/status.js:214
+msgid "Line state"
+msgstr "线路状态"
 
 #: package/luci-app-voip/htdocs/luci-static/resources/view/voip/status.js:216
 msgid "PCM device"
