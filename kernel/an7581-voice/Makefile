@@ -6,7 +6,7 @@ include $(TOPDIR)/rules.mk
 include $(INCLUDE_DIR)/kernel.mk
 
 PKG_NAME:=an7581-voice
-PKG_RELEASE:=8
+PKG_RELEASE:=5
 PKG_LICENSE:=GPL-2.0-only
 
 PKG_BUILD_DIR:=$(KERNEL_BUILD_DIR)/an7581-voice
@@ -84,7 +84,10 @@ define Build/Compile
 	+$(KERNEL_MAKE) $(PKG_JOBS) M="$(PKG_BUILD_DIR)" modules
 endef
 
+PKG_RELEASE:=5
 $(eval $(call KernelPackage,an7581-pcm))
 $(eval $(call KernelPackage,an7581-zsi))
+
+PKG_RELEASE:=1
 $(eval $(call KernelPackage,an7581-slic))
 $(eval $(call KernelPackage,an7581-fxs))
