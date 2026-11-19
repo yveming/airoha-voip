@@ -1,15 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Microchip/Microsemi Le9641 (VP887) on the Airoha AN7581 ZSI wrapper.
+ * Zarlink Le964x backend for an7581-slic.
  *
  * The raw-MPI profile data and the line-control sequence are the OEM
  * Le9641 BB/ZSI values (the same tables used by the EcoNet AN7551/AN7581
- * SDK mod-slic3).  The transport is the new an7581-zsi driver; no EN75xx
- * PCM/ZSI/voice code is linked here.
- *
- * This driver initialises the SLIC, brings the linear audio path up on one
- * bus slot, reads the hook switch, provides the 1 s ring / 4 s silence
- * cadence, and exposes /proc/an7581-slic for diagnostics.
+ * SDK mod-slic3).  The transport is the an7581-zsi driver.
  */
 
 #include <linux/delay.h>
@@ -28,10 +23,8 @@
 #include <linux/string.h>
 #include <linux/uaccess.h>
 
-#include "an7581_zsi.h"
-#include "fxs.h"
+#include "an7581_slic.h"
 
-#define DRV_NAME	"an7581-slic"
 
 /* MPI opcodes (read opcode = write opcode + 1) */
 #define VP886_R_EC_WRT			0x4a
@@ -80,17 +73,9 @@
 #define LE9642_PCM_CLK_KHZ		2048
 #define LE9642_MAX_SLOT			(LE9642_PCM_CLK_KHZ / 64 - 1)
 
-static int bus_slot = 4;
-module_param(bus_slot, int, 0444);
-MODULE_PARM_DESC(bus_slot, "PCM bus slot for the FXS line (default 4)");
-
 static int feed_ila = 0x07;
 module_param(feed_ila, int, 0644);
 MODULE_PARM_DESC(feed_ila, "DC feed loop current limit field (mA = 18 + n; OEM IB default 0x07)");
-
-static bool tx_shift = true;
-module_param(tx_shift, bool, 0644);
-MODULE_PARM_DESC(tx_shift, "shift the ZSI transmit slot down by one slot");
 
 /*
  * OEM Le9641 profiles.  The six-byte VpProfile header is followed by a
@@ -132,47 +117,6 @@ static const u8 ring_profile[] = {
 	0xaa, 0x02, 0x0e, 0x00,
 };
 
-#define AN7581_SLIC_IOC_MAGIC		'V'
-
-struct an7581_slic_status {
-	__u32 id;
-	__u32 state;
-	__u32 opfunc;
-	__u32 hook;
-	__u32 tx;
-	__u32 rx;
-};
-
-struct an7581_slic_event {
-	__u32 hook;
-	__u32 state;
-};
-
-#define AN7581_SLIC_GET_STATUS	_IOR(AN7581_SLIC_IOC_MAGIC, 1, struct an7581_slic_status)
-#define AN7581_SLIC_SET_RING	_IOW(AN7581_SLIC_IOC_MAGIC, 2, int)
-#define AN7581_SLIC_SET_ACTIVE	_IOW(AN7581_SLIC_IOC_MAGIC, 3, int)
-#define AN7581_SLIC_GET_HOOK	_IOR(AN7581_SLIC_IOC_MAGIC, 4, int)
-
-struct an7581_slic {
-	struct device *dev;
-	struct an7581_zsi *zsi;
-	struct mutex lock;
-	u8 rcn;
-	u8 pcn;
-	bool initialised;
-	struct delayed_work hook_work;
-	wait_queue_head_t hook_wait;
-	bool hook_offhook;
-	bool hook_changed;
-	bool ringing;
-	unsigned int ring_tick;
-	unsigned int ring_on_ticks;
-	unsigned int ring_period_ticks;
-	unsigned int hook_streak;
-	void (*hook_cb)(void *data, bool offhook);
-	void *hook_data;
-};
-
 static struct an7581_slic *slic_dbg;
 
 static int slic_cmd(struct an7581_slic *slic, u8 ec, u8 opcode,
@@ -212,7 +156,7 @@ static int slic_stream_profile(struct an7581_slic *slic, u8 ec,
 #define slic_stream(slic, ec, what, prof) \
 	slic_stream_profile((slic), (ec), (what), (prof), sizeof(prof))
 
-static int slic_detect(struct an7581_slic *slic)
+int an7581_slic_zarlink_detect(struct an7581_slic *slic)
 {
 	u8 id[2];
 	int ret;
@@ -221,17 +165,20 @@ static int slic_detect(struct an7581_slic *slic)
 				  id, sizeof(id));
 	if (ret)
 		return ret;
+
 	slic->rcn = id[0];
 	slic->pcn = id[1];
-	if (id[0] != VP886_RCN_LE964X ||
-	    (id[1] != VP886_PCN_LE9641 && id[1] != VP886_PCN_LE9642)) {
-		dev_err(slic->dev, "unexpected chip id %02x %02x\n",
-			id[0], id[1]);
-		return -ENODEV;
+
+	if (id[0] == VP886_RCN_LE964X && id[1] == VP886_PCN_LE9641) {
+		slic->type = AN7581_SLIC_LE9641;
+		return 0;
 	}
-	dev_info(slic->dev, "Le964%c detected (rcn %02x pcn %02x)\n",
-		 id[1] == VP886_PCN_LE9642 ? '2' : '1', id[0], id[1]);
-	return 0;
+	if (id[0] == VP886_RCN_LE964X && id[1] == VP886_PCN_LE9642) {
+		slic->type = AN7581_SLIC_LE9642;
+		return 0;
+	}
+
+	return -ENODEV;
 }
 
 static int slic_set_feed(struct an7581_slic *slic)
@@ -267,15 +214,15 @@ static int slic_set_state(struct an7581_slic *slic, u8 state, bool codec)
 
 static int slic_program_slots(struct an7581_slic *slic)
 {
-	unsigned int tx = bus_slot;
+	unsigned int tx = slic->bus_slot;
 	int ret;
 
-	if (tx_shift)
+	if (slic->tx_shift)
 		tx = tx ? tx - 1 : LE9642_MAX_SLOT;
 	ret = slic_cmd1(slic, VP886_EC_1, VP886_R_TXSLOT_WRT, tx);
 	if (ret)
 		return ret;
-	return slic_cmd1(slic, VP886_EC_1, VP886_R_RXSLOT_WRT, bus_slot);
+	return slic_cmd1(slic, VP886_EC_1, VP886_R_RXSLOT_WRT, slic->bus_slot);
 }
 
 static int slic_audio_on(struct an7581_slic *slic)
@@ -308,9 +255,11 @@ static int slic_init(struct an7581_slic *slic)
 	u8 devmode;
 	int ret;
 
-	ret = slic_detect(slic);
-	if (ret)
-		return ret;
+	if (slic->type == AN7581_SLIC_UNKNOWN) {
+		ret = an7581_slic_zarlink_detect(slic);
+		if (ret)
+			return ret;
+	}
 
 	ret = slic_stream(slic, 0, "dev", dev_profile);
 	if (ret)
@@ -347,8 +296,10 @@ static int slic_init(struct an7581_slic *slic)
 		return ret;
 	slic->initialised = true;
 	dev_info(slic->dev, "audio up: bus slot %u, tx slot %u, linear 16-bit\n",
-		 bus_slot, tx_shift ? (bus_slot ? bus_slot - 1 : LE9642_MAX_SLOT)
-				    : bus_slot);
+		 slic->bus_slot,
+		 slic->tx_shift ? (slic->bus_slot ? slic->bus_slot - 1
+						 : LE9642_MAX_SLOT)
+				: slic->bus_slot);
 	return 0;
 }
 
@@ -429,7 +380,7 @@ out:
 	}
 }
 
-static void le9641_hook_cb(void *data, bool offhook)
+static void zarlink_hook_cb(void *data, bool offhook)
 {
 	struct fxs_event event = {
 		.type = FXS_EV_HOOK,
@@ -439,22 +390,7 @@ static void le9641_hook_cb(void *data, bool offhook)
 	fxs_event_push(data, &event);
 }
 
-static int le9641_detect(void *ctx)
-{
-	struct an7581_slic *slic = slic_dbg;
-	int ret;
-
-	if (!slic)
-		return -ENODEV;
-
-	mutex_lock(&slic->lock);
-	ret = slic_detect(slic);
-	mutex_unlock(&slic->lock);
-
-	return ret;
-}
-
-static int le9641_init(struct fxs_line *line)
+static int zarlink_init(struct fxs_line *line)
 {
 	struct an7581_slic *slic = slic_dbg;
 	int ret;
@@ -465,7 +401,7 @@ static int le9641_init(struct fxs_line *line)
 	mutex_lock(&slic->lock);
 	ret = slic_init(slic);
 	if (!ret) {
-		slic->hook_cb = le9641_hook_cb;
+		slic->hook_cb = zarlink_hook_cb;
 		slic->hook_data = line;
 	}
 	mutex_unlock(&slic->lock);
@@ -473,7 +409,7 @@ static int le9641_init(struct fxs_line *line)
 	return ret;
 }
 
-static void le9641_exit(struct fxs_line *line)
+static void zarlink_exit(struct fxs_line *line)
 {
 	struct an7581_slic *slic = slic_dbg;
 
@@ -488,7 +424,7 @@ static void le9641_exit(struct fxs_line *line)
 	mutex_unlock(&slic->lock);
 }
 
-static int le9641_set_ring(struct fxs_line *line, bool on)
+static int zarlink_set_ring(struct fxs_line *line, bool on)
 {
 	struct an7581_slic *slic = slic_dbg;
 	int ret;
@@ -515,7 +451,7 @@ static int le9641_set_ring(struct fxs_line *line, bool on)
 	return ret;
 }
 
-static int le9641_set_active(struct fxs_line *line, bool on)
+static int zarlink_set_active(struct fxs_line *line, bool on)
 {
 	struct an7581_slic *slic = slic_dbg;
 	int ret;
@@ -533,7 +469,7 @@ static int le9641_set_active(struct fxs_line *line, bool on)
 	return ret;
 }
 
-static int le9641_get_hook(struct fxs_line *line, bool *offhook)
+static int zarlink_get_hook(struct fxs_line *line, bool *offhook)
 {
 	struct an7581_slic *slic = slic_dbg;
 
@@ -547,20 +483,13 @@ static int le9641_get_hook(struct fxs_line *line, bool *offhook)
 	return 0;
 }
 
-static const struct fxs_slic_ops le9641_ops = {
+static const struct fxs_slic_ops zarlink_ops = {
 	.caps		= FXS_CAP_RING | FXS_CAP_HOOK,
-	.init		= le9641_init,
-	.exit		= le9641_exit,
-	.set_ring	= le9641_set_ring,
-	.set_active	= le9641_set_active,
-	.get_hook	= le9641_get_hook,
-};
-
-static struct fxs_slic_driver le9641_driver = {
-	.name		= "le9641",
-	.owner		= THIS_MODULE,
-	.detect		= le9641_detect,
-	.ops		= &le9641_ops,
+	.init		= zarlink_init,
+	.exit		= zarlink_exit,
+	.set_ring	= zarlink_set_ring,
+	.set_active	= zarlink_set_active,
+	.get_hook	= zarlink_get_hook,
 };
 
 static void slic_dump(struct an7581_slic *slic)
@@ -604,7 +533,7 @@ static ssize_t slic_proc_write(struct file *file, const char __user *ubuf,
 
 	mutex_lock(&slic->lock);
 	if (!strcmp(cmd, "detect")) {
-		ret = slic_detect(slic);
+		ret = an7581_slic_zarlink_detect(slic);
 	} else if (!strcmp(cmd, "init")) {
 		ret = slic_init(slic);
 	} else if (!strcmp(cmd, "audio")) {
@@ -673,114 +602,26 @@ static const struct proc_ops slic_proc_ops = {
 	.proc_write = slic_proc_write,
 };
 
-static int an7581_slic_probe(struct platform_device *pdev)
+int an7581_slic_zarlink_probe(struct an7581_slic *slic)
 {
-	struct an7581_slic *slic;
-	u32 slots[2];
-
-	slic = devm_kzalloc(&pdev->dev, sizeof(*slic), GFP_KERNEL);
-	if (!slic)
-		return -ENOMEM;
-
-	slic->dev = &pdev->dev;
-	mutex_init(&slic->lock);
-	init_waitqueue_head(&slic->hook_wait);
-	INIT_DELAYED_WORK(&slic->hook_work, slic_hook_work);
-	slic->zsi = an7581_zsi_get(&pdev->dev, "airoha,zsi");
-	if (!slic->zsi)
-		return -EPROBE_DEFER;
-
-	if (pdev->dev.of_node &&
-	    !of_property_read_u32_array(pdev->dev.of_node, "airoha,bus-slots",
-					slots, 1))
-		bus_slot = slots[0];
-	if (pdev->dev.of_node &&
-	    of_property_read_bool(pdev->dev.of_node, "airoha,no-zsi-tx-shift"))
-		tx_shift = false;
-
-	platform_set_drvdata(pdev, slic);
 	slic_dbg = slic;
-	proc_create(DRV_NAME, 0644, NULL, &slic_proc_ops);
-
+	INIT_DELAYED_WORK(&slic->hook_work, slic_hook_work);
+	proc_create(AN7581_SLIC_DRV_NAME, 0644, NULL, &slic_proc_ops);
 	schedule_delayed_work(&slic->hook_work, msecs_to_jiffies(50));
-
-	dev_info(&pdev->dev, "AN7581 Le9641 SLIC ready for fxs-core (bus slot %d)\n",
-		 bus_slot);
+	dev_info(slic->dev, "Zarlink backend ready (bus slot %d)\n",
+		 slic->bus_slot);
 	return 0;
 }
 
-static void an7581_slic_remove(struct platform_device *pdev)
+void an7581_slic_zarlink_remove(struct an7581_slic *slic)
 {
-	struct an7581_slic *slic = platform_get_drvdata(pdev);
-
 	cancel_delayed_work_sync(&slic->hook_work);
-	remove_proc_entry(DRV_NAME, NULL);
+	remove_proc_entry(AN7581_SLIC_DRV_NAME, NULL);
 	slic_dbg = NULL;
 }
 
-static const struct of_device_id an7581_slic_of_match[] = {
-	{ .compatible = "fiberhome,hg5582a-le9641" },
-	{ .compatible = "microsemi,le9641" },
-	{ }
-};
-MODULE_DEVICE_TABLE(of, an7581_slic_of_match);
-
-static struct platform_driver an7581_slic_driver = {
-	.probe = an7581_slic_probe,
-	.remove = an7581_slic_remove,
-	.driver = {
-		.name = DRV_NAME,
-		.of_match_table = an7581_slic_of_match,
-	},
-};
-
-static struct platform_device *an7581_slic_fallback;
-
-static int __init an7581_slic_init(void)
+const struct fxs_slic_ops *an7581_slic_zarlink_ops(void)
 {
-	struct device_node *np;
-	int ret;
-
-	np = of_find_compatible_node(NULL, NULL, "fiberhome,hg5582a-le9641");
-	if (!np)
-		np = of_find_compatible_node(NULL, NULL, "microsemi,le9641");
-	if (np) {
-		of_node_put(np);
-	} else {
-		an7581_slic_fallback = platform_device_register_simple(
-			DRV_NAME, -1, NULL, 0);
-		if (IS_ERR(an7581_slic_fallback))
-			return PTR_ERR(an7581_slic_fallback);
-	}
-
-	ret = platform_driver_register(&an7581_slic_driver);
-	if (ret) {
-		if (an7581_slic_fallback)
-			platform_device_unregister(an7581_slic_fallback);
-		return ret;
-	}
-
-	ret = fxs_register_slic_driver(&le9641_driver);
-	if (ret) {
-		platform_driver_unregister(&an7581_slic_driver);
-		if (an7581_slic_fallback)
-			platform_device_unregister(an7581_slic_fallback);
-		return ret;
-	}
-
-	return 0;
+	return &zarlink_ops;
 }
 
-static void __exit an7581_slic_exit(void)
-{
-	fxs_unregister_slic_driver(&le9641_driver);
-	platform_driver_unregister(&an7581_slic_driver);
-	if (an7581_slic_fallback)
-		platform_device_unregister(an7581_slic_fallback);
-}
-
-module_init(an7581_slic_init);
-module_exit(an7581_slic_exit);
-
-MODULE_DESCRIPTION("Airoha AN7581 Le9641 SLIC driver");
-MODULE_LICENSE("GPL");

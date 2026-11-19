@@ -2,9 +2,8 @@
 /*
  * Airoha AN7581 ZSI transport (HG5582A Le9641).
  *
- * This is deliberately transport-only.  It does not touch the AN7581 PCM
- * block, the VP-API or the SLIC profiles.  The first milestone is the OEM
- * detection transaction: EC=1, register 0x73, two bytes -> 08 49.
+ * This is deliberately transport-only.  The PCM clock/slot setup lives in
+ * an7581-pcm; this driver only configures the ZSI wrapper and reset.
  *
  * The safe register sequence was validated on HG5582A with devmem:
  *
@@ -34,6 +33,8 @@
 
 #include "an7581_zsi.h"
 
+extern bool an7581_pcm_fxs_ready(void);
+
 #define DRV_NAME	"an7581-zsi"
 
 /* ZSI wrapper */
@@ -58,50 +59,11 @@
 
 /* Chip SCU */
 #define CHIP_SCU_CLKSRC		0x218
-#define  CHIP_SCU_CLKSRC_MASK	0x003f3300u
+#define  CHIP_SCU_CLKSRC_ZSI_MASK	0x002f3300u
 #define  CHIP_SCU_CLKSRC_VAL	0x00001000u
 #define CHIP_SCU_PINMUX		0x1d0
 #define  CHIP_SCU_PINMUX_MASK	0x00000c01u
 #define  CHIP_SCU_PINMUX_VAL	0x00000c01u
-#define  CHIP_SCU_PINMUX_PCM_VAL	0x000c0001u
-#define CHIP_SCU_PCM_GATE	0x1c4
-#define  CHIP_SCU_PCM_GATE_BIT	BIT(16)
-#define  CHIP_SCU_PCM_CLK_BIT	BIT(20)
-
-/*
- * Bring-up-only PCM clock setup.  ZSI control bytes are clocked over the PCM
- * bus, so the PCM block must generate PCLK/FSYNC before the Le9641 answers.
- * These values are the OEM pcm1.ko defaults (defaultConfigNodeSet() +
- * timeSlotCfgInit() + pcmConfigSetup()) and were validated on HG5582A:
- * with them `echo id > /proc/an7581-zsi` returns 08 49.
- *
- * This will move into the an7581-pcm driver; the ZSI transport keeps it here
- * temporarily so a single module can be used for the first bring-up test.
- */
-#define AN7581_PCM_BASE		0x1fbd0000
-#define PCM_CTRL		0x00
-#define PCM_CHAN_ENABLE		0xac
-#define PCM_CTRL_CFG		0xf5071306u
-#define PCM_CTRL_CFG_NOVALID	0xf1051306u
-
-static const u16 an7581_pcm_tx_off[16] = {
-	0x04, 0x08, 0x0c, 0x10, 0x48, 0x4c, 0x50, 0x54,
-	0x58, 0x5c, 0x60, 0x64, 0x68, 0x6c, 0x70, 0x74,
-};
-
-static const u16 an7581_pcm_rx_off[16] = {
-	0x14, 0x18, 0x1c, 0x20, 0x78, 0x7c, 0x80, 0x84,
-	0x88, 0x8c, 0x90, 0x94, 0x98, 0x9c, 0xa0, 0xa4,
-};
-
-
-
-static const u32 an7581_pcm_slot_cfg[16] = {
-	0x10101000, 0x10301020, 0x10501040, 0x10701060,
-	0x10901080, 0x10b010a0, 0x10d010c0, 0x10f010e0,
-	0x11101100, 0x11301120, 0x11501140, 0x11701160,
-	0x11901180, 0x11b011a0, 0x11d011c0, 0x11f011e0,
-};
 
 #define ZSI_POLL_ITERS	20000
 
@@ -123,7 +85,6 @@ MODULE_PARM_DESC(init_mode, "0=full SCU init, 1=wrapper already configured");
 struct an7581_zsi {
 	struct device *dev;
 	void __iomem *base;
-	void __iomem *pcm;
 	struct regmap *np_scu;
 	struct regmap *chip_scu;
 	struct mutex lock;
@@ -298,64 +259,6 @@ void an7581_zsi_put(struct an7581_zsi *zsi)
 }
 EXPORT_SYMBOL_GPL(an7581_zsi_put);
 
-static int an7581_pcm_clock_init(struct an7581_zsi *zsi)
-{
-	unsigned int i;
-	int ret;
-
-	if (!zsi->pcm)
-		return -ENODEV;
-
-	if (zsi->chip_scu) {
-		/* pcm1.ko init_module(): table[0] |= table[8], table[1] = table[6] | 1 */
-		ret = regmap_update_bits(zsi->chip_scu, CHIP_SCU_CLKSRC,
-					 CHIP_SCU_PCM_CLK_BIT,
-					 CHIP_SCU_PCM_CLK_BIT);
-		if (ret)
-			return ret;
-		ret = regmap_write(zsi->chip_scu, CHIP_SCU_PINMUX,
-				   CHIP_SCU_PINMUX_PCM_VAL);
-		if (ret)
-			return ret;
-		/* spi.ko SPI_cfg(): PCM clock gate */
-		ret = regmap_update_bits(zsi->chip_scu, CHIP_SCU_PCM_GATE,
-					 CHIP_SCU_PCM_GATE_BIT,
-					 CHIP_SCU_PCM_GATE_BIT);
-		if (ret)
-			return ret;
-	}
-
-	/*
-	 * Keep the full OEM 32-slot/16-bit table.  The PCM DMA engine needs
-	 * the contiguous slot sequence (the single-slot experiment stopped
-	 * descriptor completion); the SLIC channel mapping is a separate
-	 * problem still to be solved.
-	 */
-	for (i = 0; i < 16; i++) {
-		writel(an7581_pcm_slot_cfg[i], zsi->pcm + an7581_pcm_tx_off[i]);
-		writel(an7581_pcm_slot_cfg[i], zsi->pcm + an7581_pcm_rx_off[i]);
-	}
-	/*
-	 * Vendor-proven Le9642 ZSI mapping: DMA channel 0 sits at PCM
-	 * bus byte slot 4 (bit offset 0x20).
-	 */
-	writel(0x10301020, zsi->pcm + an7581_pcm_tx_off[0]);
-	writel(0x10301020, zsi->pcm + an7581_pcm_rx_off[0]);
-
-
-	/* pcmConfigSetup(): clear config-valid, then write the final value. */
-	/* Three active PCM channels: 0/1 silent, channel 2 is the FXS audio. */
-	writel(0x1, zsi->pcm + PCM_CHAN_ENABLE);
-	writel(PCM_CTRL_CFG_NOVALID, zsi->pcm + PCM_CTRL);
-	usleep_range(1000, 2000);
-	writel(PCM_CTRL_CFG, zsi->pcm + PCM_CTRL);
-	usleep_range(1000, 2000);
-
-	dev_info(zsi->dev, "AN7581 PCM clock ready (ctrl=%08x)\n",
-		 readl(zsi->pcm + PCM_CTRL));
-	return 0;
-}
-
 static int zsi_hw_init(struct an7581_zsi *zsi)
 {
 	int ret;
@@ -369,7 +272,7 @@ static int zsi_hw_init(struct an7581_zsi *zsi)
 		}
 		if (zsi->chip_scu) {
 			ret = regmap_update_bits(zsi->chip_scu, CHIP_SCU_CLKSRC,
-						 CHIP_SCU_CLKSRC_MASK,
+						 CHIP_SCU_CLKSRC_ZSI_MASK,
 						 CHIP_SCU_CLKSRC_VAL);
 			if (ret)
 				return ret;
@@ -379,9 +282,6 @@ static int zsi_hw_init(struct an7581_zsi *zsi)
 			if (ret)
 				return ret;
 		}
-		ret = an7581_pcm_clock_init(zsi);
-		if (ret)
-			dev_warn(zsi->dev, "PCM clock init failed: %d\n", ret);
 		zsi_wrapper_config(zsi);
 		if (zsi->np_scu) {
 			ret = regmap_update_bits(zsi->np_scu, NP_SCU_RESET,
@@ -438,16 +338,6 @@ static ssize_t zsi_proc_write(struct file *file, const char __user *ubuf,
 			 readl(zsi->base + ZSI_CTL),
 			 readl(zsi->base + ZSI_EN),
 			 readl(zsi->base + ZSI_CHAN_SEL));
-		if (zsi->pcm)
-			dev_info(zsi->dev, "PCM ctrl=%08x\n",
-				 readl(zsi->pcm + PCM_CTRL));
-		goto out;
-	}
-
-	if (!strcmp(cmd, "pcm")) {
-		ret = an7581_pcm_clock_init(zsi);
-		if (ret)
-			dev_err(zsi->dev, "PCM clock init failed: %d\n", ret);
 		goto out;
 	}
 
@@ -529,10 +419,6 @@ static int an7581_zsi_probe(struct platform_device *pdev)
 	zsi->base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(zsi->base))
 		return PTR_ERR(zsi->base);
-	zsi->pcm = devm_ioremap(&pdev->dev, AN7581_PCM_BASE, 0x1000);
-	if (!zsi->pcm)
-		dev_warn(&pdev->dev, "PCM block not mapped; detection may fail\n");
-
 	zsi->np_scu = syscon_regmap_lookup_by_phandle(pdev->dev.of_node,
 						      "airoha,scu");
 	if (IS_ERR(zsi->np_scu))
@@ -541,6 +427,9 @@ static int an7581_zsi_probe(struct platform_device *pdev)
 							"airoha,chip-scu");
 	if (IS_ERR(zsi->chip_scu))
 		zsi->chip_scu = NULL;
+
+	if (!an7581_pcm_fxs_ready())
+		return -EPROBE_DEFER;
 
 	platform_set_drvdata(pdev, zsi);
 	zsi_dbg = zsi;

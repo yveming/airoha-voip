@@ -48,6 +48,8 @@
 #include <linux/io.h>
 #include <linux/kfifo.h>
 #include <linux/kthread.h>
+#include <linux/mfd/syscon.h>
+#include <linux/regmap.h>
 #include <linux/log2.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
@@ -63,6 +65,7 @@
 #include <linux/unaligned.h>
 
 #include "oslec.h"
+#include "an7581_pcm.h"
 
 #define DRV_NAME	"an7581-pcm"
 
@@ -79,6 +82,33 @@
 #define PCM_DMA_RX		BIT(1)
 #define PCM_DESC_CFG		0xa8
 #define PCM_CHAN_ENABLE		0xac
+
+#define PCM_CTRL_CFG		0xf5071306u
+#define PCM_CTRL_CFG_NOVALID	0xf1051306u
+
+#define CHIP_SCU_CLKSRC		0x218
+#define CHIP_SCU_PCM_CLK_BIT	BIT(20)
+#define CHIP_SCU_PINMUX		0x1d0
+#define CHIP_SCU_PINMUX_PCM_VAL	0x000c0001u
+#define CHIP_SCU_PCM_GATE	0x1c4
+#define CHIP_SCU_PCM_GATE_BIT	BIT(16)
+
+static const u16 an7581_pcm_tx_off[16] = {
+	0x04, 0x08, 0x0c, 0x10, 0x48, 0x4c, 0x50, 0x54,
+	0x58, 0x5c, 0x60, 0x64, 0x68, 0x6c, 0x70, 0x74,
+};
+
+static const u16 an7581_pcm_rx_off[16] = {
+	0x14, 0x18, 0x1c, 0x20, 0x78, 0x7c, 0x80, 0x84,
+	0x88, 0x8c, 0x90, 0x94, 0x98, 0x9c, 0xa0, 0xa4,
+};
+
+static const u32 an7581_pcm_slot_cfg[16] = {
+	0x10101000, 0x10301020, 0x10501040, 0x10701060,
+	0x10901080, 0x10b010a0, 0x10d010c0, 0x10f010e0,
+	0x11101100, 0x11301120, 0x11501140, 0x11701160,
+	0x11901180, 0x11b011a0, 0x11d011c0, 0x11f011e0,
+};
 
 #define PCM_CTRL_LOOPBACK	BIT(25)
 #define PCM_DESC_OWN		BIT(31)
@@ -113,6 +143,7 @@ struct an7581_pcm_desc {
 struct an7581_pcm {
 	struct device *dev;
 	void __iomem *base;
+	struct regmap *chip_scu;
 	struct mutex lock;
 
 	void *desc_cpu;
@@ -637,6 +668,47 @@ static void pcm_dump(struct an7581_pcm *pcm)
 	}
 }
 
+static int an7581_pcm_clock_init(struct an7581_pcm *pcm)
+{
+	unsigned int i;
+	int ret;
+
+	if (pcm->chip_scu) {
+		ret = regmap_update_bits(pcm->chip_scu, CHIP_SCU_CLKSRC,
+					 CHIP_SCU_PCM_CLK_BIT,
+					 CHIP_SCU_PCM_CLK_BIT);
+		if (ret)
+			return ret;
+		ret = regmap_write(pcm->chip_scu, CHIP_SCU_PINMUX,
+				   CHIP_SCU_PINMUX_PCM_VAL);
+		if (ret)
+			return ret;
+		ret = regmap_update_bits(pcm->chip_scu, CHIP_SCU_PCM_GATE,
+					 CHIP_SCU_PCM_GATE_BIT,
+					 CHIP_SCU_PCM_GATE_BIT);
+		if (ret)
+			return ret;
+	}
+
+	for (i = 0; i < 16; i++) {
+		writel(an7581_pcm_slot_cfg[i], pcm->base + an7581_pcm_tx_off[i]);
+		writel(an7581_pcm_slot_cfg[i], pcm->base + an7581_pcm_rx_off[i]);
+	}
+
+	writel(0x10301020, pcm->base + an7581_pcm_tx_off[0]);
+	writel(0x10301020, pcm->base + an7581_pcm_rx_off[0]);
+
+	writel(0x1, pcm->base + PCM_CHAN_ENABLE);
+	writel(PCM_CTRL_CFG_NOVALID, pcm->base + PCM_CTRL);
+	usleep_range(1000, 2000);
+	writel(PCM_CTRL_CFG, pcm->base + PCM_CTRL);
+	usleep_range(1000, 2000);
+
+	dev_info(pcm->dev, "AN7581 PCM clock ready (ctrl=%08x)\n",
+		 readl(pcm->base + PCM_CTRL));
+	return 0;
+}
+
 static ssize_t pcm_proc_write(struct file *file, const char __user *ubuf,
 			      size_t count, loff_t *ppos)
 {
@@ -653,7 +725,9 @@ static ssize_t pcm_proc_write(struct file *file, const char __user *ubuf,
 	cmd = strim(buf);
 
 	mutex_lock(&pcm->lock);
-	if (!strcmp(cmd, "test")) {
+	if (!strcmp(cmd, "clock")) {
+		ret = an7581_pcm_clock_init(pcm);
+	} else if (!strcmp(cmd, "test")) {
 		ret = pcm_loopback_test(pcm);
 	} else if (!strcmp(cmd, "loopback")) {
 		ret = pcm_start(pcm, true, true);
@@ -905,6 +979,17 @@ static int an7581_pcm_probe(struct platform_device *pdev)
 	pcm->base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(pcm->base))
 		return PTR_ERR(pcm->base);
+
+	if (pdev->dev.of_node) {
+		pcm->chip_scu = syscon_regmap_lookup_by_phandle(
+			pdev->dev.of_node, "airoha,chip-scu");
+		if (IS_ERR(pcm->chip_scu))
+			pcm->chip_scu = NULL;
+	}
+
+	ret = an7581_pcm_clock_init(pcm);
+	if (ret)
+		return ret;
 
 	ret = dma_set_coherent_mask(&pdev->dev, DMA_BIT_MASK(32));
 	if (ret)

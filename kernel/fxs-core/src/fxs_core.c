@@ -83,9 +83,6 @@ static DEFINE_IDA(fxs_ida);
 static LIST_HEAD(fxs_lines);
 static DEFINE_MUTEX(fxs_lines_lock);
 
-static LIST_HEAD(fxs_slic_drivers);
-static DEFINE_MUTEX(fxs_slic_lock);
-
 static struct class *fxs_class;
 
 static void fxs_line_put(struct fxs_line *line)
@@ -772,58 +769,6 @@ void fxs_event_push(struct fxs_line *line, const struct fxs_event *event)
 	wake_up_interruptible(&line->event_wait);
 }
 EXPORT_SYMBOL_GPL(fxs_event_push);
-
-int fxs_register_slic_driver(struct fxs_slic_driver *drv)
-{
-	if (!drv || !drv->name || !drv->detect || !drv->ops)
-		return -EINVAL;
-
-	INIT_LIST_HEAD(&drv->list);
-	mutex_lock(&fxs_slic_lock);
-	list_add_tail(&drv->list, &fxs_slic_drivers);
-	mutex_unlock(&fxs_slic_lock);
-
-	pr_info("fxs-core: SLIC backend %s registered\n", drv->name);
-	return 0;
-}
-EXPORT_SYMBOL_GPL(fxs_register_slic_driver);
-
-void fxs_unregister_slic_driver(struct fxs_slic_driver *drv)
-{
-	if (!drv)
-		return;
-
-	mutex_lock(&fxs_slic_lock);
-	list_del_init(&drv->list);
-	mutex_unlock(&fxs_slic_lock);
-}
-EXPORT_SYMBOL_GPL(fxs_unregister_slic_driver);
-
-const struct fxs_slic_ops *fxs_slic_probe(void *ctx, void **priv,
-					  struct module **owner,
-					  const char **name)
-{
-	const struct fxs_slic_ops *ops = ERR_PTR(-ENODEV);
-	struct fxs_slic_driver *drv;
-
-	mutex_lock(&fxs_slic_lock);
-	list_for_each_entry(drv, &fxs_slic_drivers, list) {
-		if (drv->detect(ctx))
-			continue;
-		if (priv)
-			*priv = drv->priv;
-		if (owner)
-			*owner = drv->owner;
-		if (name)
-			*name = drv->name;
-		ops = drv->ops;
-		break;
-	}
-	mutex_unlock(&fxs_slic_lock);
-
-	return ops;
-}
-EXPORT_SYMBOL_GPL(fxs_slic_probe);
 
 static const char *fxs_state_name(u32 state)
 {

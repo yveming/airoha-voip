@@ -86,6 +86,7 @@ struct fxs_event {
 #define FXS_IOC_CLAIM		_IOW(FXS_IOC_MAGIC, 0x07, int)
 #define FXS_IOC_RELEASE		_IO(FXS_IOC_MAGIC, 0x08)
 #define FXS_IOC_GET_LINE_NAME	_IOR(FXS_IOC_MAGIC, 0x09, char[FXS_LINE_NAME_MAX])
+#define FXS_IOC_SET_ECHO_CANCEL	_IOW(FXS_IOC_MAGIC, 0x0a, int)
 
 #ifdef __KERNEL__
 
@@ -112,6 +113,7 @@ struct fxs_pcm_ops {
 			 const char __user *buf, size_t count, loff_t *ppos);
 	__poll_t (*poll)(struct fxs_line *line, struct file *file,
 			 poll_table *wait);
+	int (*set_echo_cancel)(struct fxs_line *line, bool on);
 };
 
 struct fxs_line *fxs_register_line(struct device *dev, const char *name,

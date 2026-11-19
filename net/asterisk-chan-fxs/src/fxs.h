@@ -7,7 +7,6 @@
 
 #ifdef __KERNEL__
 #include <linux/fs.h>
-#include <linux/list.h>
 #include <linux/poll.h>
 #endif
 
@@ -116,27 +115,6 @@ struct fxs_pcm_ops {
 			 poll_table *wait);
 	int (*set_echo_cancel)(struct fxs_line *line, bool on);
 };
-
-/*
- * A SLIC backend registers a detector with the generic core.  The board
- * provider probes every registered backend and binds the first one whose
- * detect() accepts the hardware.  This keeps board files and init scripts
- * from naming a specific SLIC part.
- */
-struct fxs_slic_driver {
-	const char *name;
-	struct module *owner;
-	int (*detect)(void *ctx);
-	const struct fxs_slic_ops *ops;
-	void *priv;
-	struct list_head list;
-};
-
-int fxs_register_slic_driver(struct fxs_slic_driver *drv);
-void fxs_unregister_slic_driver(struct fxs_slic_driver *drv);
-const struct fxs_slic_ops *fxs_slic_probe(void *ctx, void **priv,
-					  struct module **owner,
-					  const char **name);
 
 struct fxs_line *fxs_register_line(struct device *dev, const char *name,
 				   struct module *owner,
